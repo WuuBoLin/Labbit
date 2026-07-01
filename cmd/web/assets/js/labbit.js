@@ -1,0 +1,266 @@
+(() => {
+  if (window.__labbitInitialized) return;
+  window.__labbitInitialized = true;
+
+  const qs = (s, r = document) => r.querySelector(s);
+  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const minRem = 13.75, maxRem = 32.5, snapRem = 11.25, defaultRem = 18.75;
+  const shell = () => qs(".labbit-shell");
+  const searchItems = () => qsa("[data-search-result]");
+  const searchOpen = () => !qs("[data-search-modal]")?.classList.contains("hidden");
+  const viewerRoot = () => location.pathname.replace(/\/section\/.*$/, "").replace(/\/$/, "");
+  const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+  const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
+  function sectionURL(section, block = "") {
+    if (!section || section === "overview") return viewerRoot();
+    const url = `${viewerRoot()}/section/${encodeURIComponent(section)}`;
+    return block && block !== section ? `${url}?block=${encodeURIComponent(block)}` : url;
+  }
+  function modal(name, open) {
+    const el = qs(`[data-${name}-modal]`);
+    if (!el) return;
+    el.classList.toggle("hidden", !open);
+    if (open && name === "search") {
+      const input = qs("[data-search-input]", el);
+      selectSearch(0);
+      input?.focus();
+      input?.select();
+    }
+  }
+  function selectSearch(index) {
+    const items = searchItems();
+    const box = qs("[data-search-results]");
+    qsa(".search-result.active").forEach((el) => el.classList.remove("active"));
+    if (box) box.dataset.selectedIndex = "-1";
+    if (!items.length) return;
+    const next = (index + items.length) % items.length;
+    if (box) box.dataset.selectedIndex = String(next);
+    items[next].classList.add("active");
+    items[next].scrollIntoView({ block: "nearest" });
+  }
+  function moveSearch(delta) {
+    const current = Number(qs("[data-search-results]")?.dataset.selectedIndex);
+    selectSearch(Number.isFinite(current) && current >= 0 ? current + delta : 0);
+  }
+  function activeSearch() {
+    const items = searchItems(), index = Number(qs("[data-search-results]")?.dataset.selectedIndex);
+    return items[index] || items[0];
+  }
+  function setActiveSection(id) {
+    if (!id) return;
+    const root = shell();
+    if (root) root.dataset.currentSection = id;
+    qsa("[data-section-id]").forEach((el) => el.classList.toggle("active", el.dataset.sectionId === id));
+  }
+  const sectionFor = (el) => el?.closest?.("[data-section]")?.dataset.section || shell()?.dataset.currentSection || "overview";
+  function selectBlock(block, push = true, scroll = false) {
+    if (!block) return;
+    qsa("[data-action-block].selected").forEach((el) => el.classList.remove("selected"));
+    block.classList.add("selected");
+    const section = sectionFor(block);
+    setActiveSection(section);
+    if (push) history.pushState(null, "", sectionURL(section, block.id));
+    if (scroll) block.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const blocks = () => qsa("[data-action-block]").filter((el) => el.offsetParent !== null);
+  function currentBlockIndex(items) {
+    const selected = qs("[data-action-block].selected");
+    if (selected) return Math.max(0, items.indexOf(selected));
+    const point = scrollY + innerHeight * 0.3;
+    let current = 0;
+    items.forEach((el, i) => {
+      if (el.getBoundingClientRect().top + scrollY <= point) current = i;
+    });
+    return current;
+  }
+
+  function moveBlock(delta) {
+    const items = blocks();
+    if (!items.length) return;
+    const next = Math.max(0, Math.min(items.length - 1, currentBlockIndex(items) + delta));
+    selectBlock(items[next], true, true);
+  }
+
+  function moveSection(delta) {
+    const links = qsa(".nav-link[data-section-id]");
+    const current = shell()?.dataset.currentSection || "overview";
+    const index = Math.max(0, links.findIndex((el) => el.dataset.sectionId === current));
+    links[Math.max(0, Math.min(links.length - 1, index + delta))]?.click();
+  }
+
+  function actOnBlock() {
+    const items = blocks(), block = qs("[data-action-block].selected") || items[currentBlockIndex(items)];
+    if (!block) return;
+    const hint = qs("[data-hint-toggle]", block);
+    if (hint) return hint.click();
+    const inline = qs("[data-inline-answer-toggle]", block), quiz = qs("[data-quiz-submit]:not(:disabled)", block);
+    (inline || quiz)?.click();
+  }
+
+  function updateQuiz(form) {
+    const button = qs("[data-quiz-submit]", form);
+    if (button) button.disabled = !qsa("[data-quiz-option]", form).some((el) => el.checked);
+  }
+
+  function applySidebar() {
+    const root = shell();
+    if (!root) return;
+    const width = Math.max(minRem, Math.min(maxRem, Number(localStorage.getItem("labbit.sidebar.width.rem")) || defaultRem));
+    root.style.setProperty("--sidebar-expanded-width", `${width}rem`);
+    root.classList.toggle("sidebar-collapsed", localStorage.getItem("labbit.sidebar.collapsed") === "true");
+    root.style.setProperty("--sidebar-width", root.classList.contains("sidebar-collapsed") ? "var(--sidebar-rail-width)" : `${width}rem`);
+  }
+
+  function toggleSidebar(trigger) {
+    const root = shell();
+    if (!root) return;
+    root.classList.toggle("sidebar-collapsed");
+    localStorage.setItem("labbit.sidebar.collapsed", String(root.classList.contains("sidebar-collapsed")));
+    trigger?.blur?.();
+    applySidebar();
+  }
+
+  function resizeSidebar(event) {
+    const root = shell();
+    if (!root) return;
+    event.preventDefault();
+    root.classList.remove("sidebar-collapsed");
+    localStorage.setItem("labbit.sidebar.collapsed", "false");
+    const move = (e) => {
+      const width = rem(e.clientX);
+      if (width < snapRem) {
+	root.classList.add("sidebar-collapsed");
+	localStorage.setItem("labbit.sidebar.collapsed", "true");
+	return;
+      }
+      const clamped = Math.max(minRem, Math.min(maxRem, width));
+      root.classList.remove("sidebar-collapsed");
+      root.style.setProperty("--sidebar-width", `${clamped}rem`);
+      root.style.setProperty("--sidebar-expanded-width", `${clamped}rem`);
+      localStorage.setItem("labbit.sidebar.width.rem", String(clamped));
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  function fetchInline(button) {
+    const task = button.dataset.taskId;
+    const hint = button.dataset.hintId;
+    if (!task || !hint || button.disabled || !window.htmx) return;
+    button.disabled = true;
+    button.classList.add("loading");
+    window.htmx.ajax("GET", `${viewerRoot()}/hints/${encodeURIComponent(task)}/${encodeURIComponent(hint)}`, {
+      target: button,
+      swap: "outerHTML",
+    });
+  }
+
+  function markPending(el) {
+    const root = shell();
+    if (root) root.dataset.pendingScrollTarget = el.dataset.scrollTarget || el.dataset.shareTarget || "";
+  }
+
+  document.addEventListener("keydown", (event) => {
+    const key = event.key.toLowerCase();
+    if (searchOpen()) {
+      if ((event.ctrlKey || event.metaKey) && key === "j") return event.preventDefault(), moveSearch(1);
+      if ((event.ctrlKey || event.metaKey) && key === "k") return event.preventDefault(), moveSearch(-1);
+      if (event.key === "ArrowDown") return event.preventDefault(), moveSearch(1);
+      if (event.key === "ArrowUp") return event.preventDefault(), moveSearch(-1);
+      if (event.key === "Enter") return event.preventDefault(), activeSearch()?.click();
+    }
+    if ((event.ctrlKey || event.metaKey) && key === "k") return event.preventDefault(), modal("search", true);
+    if (event.key === "Escape") return modal("search", false), modal("keybindings", false);
+    if (typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "?") return event.preventDefault(), modal("keybindings", true);
+    if (event.key === "A") return event.preventDefault(), actOnBlock();
+    if (event.key === "J") return event.preventDefault(), moveSection(1);
+    if (event.key === "H" || event.key === "K") return event.preventDefault(), moveSection(-1);
+    if (event.key === "j") return event.preventDefault(), moveBlock(1);
+    if (event.key === "h" || event.key === "k") return event.preventDefault(), moveBlock(-1);
+  });
+
+  document.addEventListener("click", async (event) => {
+    if (event.target.matches("[data-search-modal]")) return modal("search", false);
+    if (event.target.matches("[data-keybindings-modal]") || event.target.closest("[data-close-keybindings]")) return modal("keybindings", false);
+    const sidebar = event.target.closest("[data-toggle-sidebar]");
+    if (sidebar) return toggleSidebar(sidebar);
+    const opener = event.target.closest("[data-open-search]");
+    if (opener) return modal("search", true);
+    const hxLink = event.target.closest("[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]");
+    if (hxLink) markPending(hxLink);
+    if (event.target.closest("[data-close-search]")) modal("search", false);
+    const share = event.target.closest("[data-share-target]:not([hx-get]):not([data-hint-toggle])");
+    if (share) {
+      const target = document.getElementById(share.dataset.shareTarget);
+      if (target?.matches?.("[data-action-block]")) {
+	event.preventDefault();
+	selectBlock(target);
+      }
+    }
+    const hint = event.target.closest("[data-hint-toggle]");
+    if (hint) {
+      selectBlock(hint.closest("[data-action-block]"));
+      const slot = qs(hint.dataset.hintTarget);
+      if (slot?.dataset.hintLoaded === "true") {
+	event.preventDefault();
+	const hidden = slot.classList.toggle("hidden");
+	hint.classList.toggle("open", !hidden);
+	hint.setAttribute("aria-expanded", String(!hidden));
+	hint.setAttribute("aria-pressed", String(!hidden));
+      }
+    }
+    const inline = event.target.closest("[data-inline-answer-toggle]");
+    if (inline) return event.preventDefault(), selectBlock(inline.closest("[data-action-block]")), fetchInline(inline);
+    const copy = event.target.closest("[data-copy]");
+    if (!copy) return;
+    const code = copy.closest(".code-shell")?.querySelector("[data-code]")?.dataset.code;
+    if (!code) return;
+    await navigator.clipboard.writeText(code);
+    copy.textContent = "Copied";
+    setTimeout(() => (copy.textContent = "Copy"), 900);
+  });
+
+  document.addEventListener("mousedown", (event) => event.target.closest("[data-sidebar-resizer]") && resizeSidebar(event));
+  document.addEventListener("change", (event) => {
+    const form = event.target.closest("[data-quiz-card]");
+    if (form) updateQuiz(form);
+  });
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail.target.tagName === "BODY") applySidebar();
+    if (event.detail.target.matches("[data-search-results]")) return selectSearch(0);
+    if (event.detail.target.classList.contains("hint-slot")) {
+      const slot = event.detail.target, button = qs(`[data-hint-target="#${CSS.escape(slot.id)}"]`);
+      slot.dataset.hintLoaded = "true";
+      slot.classList.remove("hidden");
+      button?.classList.add("open");
+      button?.setAttribute("aria-expanded", "true");
+      button?.setAttribute("aria-pressed", "true");
+    }
+    const content = event.detail.target.id === "content" ? event.detail.target : null;
+    if (content) {
+      const section = qs("[data-section]", content)?.dataset.section;
+      setActiveSection(section);
+    }
+    qsa("[data-quiz-card]").forEach(updateQuiz);
+  });
+
+  document.body.addEventListener("htmx:afterSettle", (event) => {
+    if (event.detail.target.id !== "content") return;
+    const target = document.getElementById(shell()?.dataset.pendingScrollTarget || "") || qs("[data-section]", event.detail.target);
+    delete shell()?.dataset.pendingScrollTarget;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    applySidebar();
+    setActiveSection(qs("[data-section]")?.dataset.section || "overview");
+    qsa("[data-quiz-card]").forEach(updateQuiz);
+    qs("[data-action-block].selected")?.scrollIntoView({ block: "start" });
+  });
+})();
