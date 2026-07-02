@@ -233,6 +233,55 @@
     @apply list-decimal space-y-2 pl-6;
   }
 
+  .labbit-table-wrap {
+    @apply overflow-x-auto rounded border border-zinc-800 bg-zinc-950;
+  }
+
+  .labbit-table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+
+  .labbit-table th {
+    @apply border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 font-semibold text-zinc-100;
+  }
+
+  .labbit-table td {
+    @apply border-t border-zinc-900 px-3 py-2 text-zinc-300;
+  }
+
+  .labbit-table .align-center {
+    @apply text-center;
+  }
+
+  .labbit-table .align-right {
+    @apply text-right;
+  }
+
+  .labbit-collapse {
+    @apply rounded border border-zinc-800 bg-zinc-950/70 transition-colors;
+  }
+
+  .labbit-collapse:has(summary:hover) {
+    border-color: rgb(var(--accent-rgb) / 0.45);
+    background: rgb(var(--accent-rgb) / 0.05);
+  }
+
+  .labbit-collapse summary {
+    @apply cursor-pointer px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors;
+  }
+
+  .labbit-collapse summary:hover {
+    color: var(--accent);
+  }
+
+  .labbit-collapse summary::marker {
+    color: var(--accent);
+  }
+
+  .labbit-collapse-body {
+    @apply border-t border-zinc-800 px-3 py-3;
+  }
+
   .code-shell {
     @apply overflow-hidden rounded border border-zinc-800 bg-zinc-950;
   }
@@ -293,11 +342,21 @@
   }
 
   .hint-toggle {
-    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-sm text-zinc-300 transition;
+    @apply relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-sm text-zinc-300 transition;
   }
 
   .hint-toggle svg {
     @apply h-4 w-4 fill-none stroke-current stroke-2;
+  }
+
+  .hint-toggle::after {
+    @apply pointer-events-none absolute right-0 top-full z-20 mt-2 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-200 opacity-0 shadow-xl shadow-black/40 transition-opacity;
+    content: attr(data-tooltip);
+  }
+
+  .hint-toggle:hover::after,
+  .hint-toggle:focus-visible::after {
+    @apply opacity-100;
   }
 
   .hint-toggle:hover,

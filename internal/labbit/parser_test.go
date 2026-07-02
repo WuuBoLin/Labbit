@@ -154,6 +154,47 @@ func TestParseDedentsIndentedTaskMarkdown(t *testing.T) {
 	}
 }
 
+func TestParseCollapseComponent(t *testing.T) {
+	doc, err := Parse(strings.NewReader(`<labbit title="Collapse">
+  <overview>
+    <collapse title="Reference ports"><![CDATA[
+| Service | Port |
+| --- | ---: |
+| SSH | ` + "`22`" + ` |
+]]></collapse>
+  </overview>
+  <lab>
+    <topic title="Topic">
+      <task title="Task">
+Read the reference.
+<collapse title="Background">
+- visible context
+</collapse>
+      </task>
+    </topic>
+  </lab>
+</labbit>`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !strings.Contains(doc.Overview, `<details class="labbit-collapse">`) {
+		t.Fatalf("overview collapse was not rendered: %s", doc.Overview)
+	}
+	if !strings.Contains(doc.Overview, `<summary>Reference ports</summary>`) {
+		t.Fatalf("overview collapse title was not rendered: %s", doc.Overview)
+	}
+	if !strings.Contains(doc.Overview, `<table class="labbit-table">`) {
+		t.Fatalf("collapse markdown body was not rendered: %s", doc.Overview)
+	}
+	prompt := doc.Topics[0].Items[0].Prompt
+	if !strings.Contains(prompt, `<summary>Background</summary>`) {
+		t.Fatalf("task collapse was not rendered: %s", prompt)
+	}
+	if strings.Contains(prompt, "data-hint") || strings.Contains(prompt, "inline-answer") {
+		t.Fatalf("collapse was confused with hint controls: %s", prompt)
+	}
+}
+
 func TestParseRequiresOverview(t *testing.T) {
 	_, err := Parse(strings.NewReader(`<labbit title="Bad"></labbit>`))
 	if err == nil || !strings.Contains(err.Error(), "overview") {

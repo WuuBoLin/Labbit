@@ -102,6 +102,15 @@
     if (button) button.disabled = !qsa("[data-quiz-option]", form).some((el) => el.checked);
   }
 
+  function updateHintToggle(button, open) {
+    if (!button) return;
+    const label = open ? "Hide Solution" : "Show Solution";
+    button.dataset.tooltip = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-expanded", String(open));
+    button.setAttribute("aria-pressed", String(open));
+  }
+
   function applySidebar() {
     const root = shell();
     if (!root) return;
@@ -210,8 +219,7 @@
 	event.preventDefault();
 	const hidden = slot.classList.toggle("hidden");
 	hint.classList.toggle("open", !hidden);
-	hint.setAttribute("aria-expanded", String(!hidden));
-	hint.setAttribute("aria-pressed", String(!hidden));
+	updateHintToggle(hint, !hidden);
       }
     }
     const inline = event.target.closest("[data-inline-answer-toggle]");
@@ -239,8 +247,7 @@
       slot.dataset.hintLoaded = "true";
       slot.classList.remove("hidden");
       button?.classList.add("open");
-      button?.setAttribute("aria-expanded", "true");
-      button?.setAttribute("aria-pressed", "true");
+      updateHintToggle(button, true);
     }
     const content = event.detail.target.id === "content" ? event.detail.target : null;
     if (content) {

@@ -6,6 +6,7 @@ package labbit
 import (
 	"bytes"
 	"html"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -15,6 +16,11 @@ import (
 )
 
 var inlineCodeRE = regexp.MustCompile("`([^`]+)`")
+
+const (
+	collapseStartMarker = ":::labbit-collapse "
+	collapseEndMarker   = ":::labbit-endcollapse"
+)
 
 func RenderMarkdown(src string) string {
 	lines := strings.Split(strings.TrimSpace(src), "\n")
@@ -36,7 +42,8 @@ func RenderMarkdown(src string) string {
 		}
 	}
 
-	for _, raw := range lines {
+	for i := 0; i < len(lines); i++ {
+		raw := lines[i]
 		line := strings.TrimRight(raw, "\r")
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(trim, "```") {
@@ -61,9 +68,46 @@ func RenderMarkdown(src string) string {
 			closeLists()
 			continue
 		}
+		if strings.HasPrefix(trim, collapseStartMarker) {
+			closeLists()
+			title := strings.TrimSpace(strings.TrimPrefix(trim, collapseStartMarker))
+			if decoded, err := url.QueryUnescape(title); err == nil {
+				title = decoded
+			}
+			var body []string
+			for i+1 < len(lines) {
+				i++
+				next := strings.TrimSpace(strings.TrimRight(lines[i], "\r"))
+				if next == collapseEndMarker {
+					break
+				}
+				body = append(body, lines[i])
+			}
+			out.WriteString(renderCollapse(title, strings.Join(body, "\n")))
+			continue
+		}
 		if strings.HasPrefix(trim, `<button class="inline-answer-toggle"`) {
 			closeLists()
 			out.WriteString(trim)
+			continue
+		}
+		if header, align, ok := tableStart(lines, i); ok {
+			closeLists()
+			var rows [][]string
+			i += 2
+			for i < len(lines) {
+				cells, ok := tableRow(lines[i])
+				if !ok {
+					i--
+					break
+				}
+				rows = append(rows, cells)
+				i++
+			}
+			if i >= len(lines) {
+				i = len(lines) - 1
+			}
+			out.WriteString(renderTable(header, align, rows))
 			continue
 		}
 		if strings.HasPrefix(trim, "### ") {
@@ -114,6 +158,100 @@ func RenderMarkdown(src string) string {
 	}
 	closeLists()
 	return out.String()
+}
+
+func renderCollapse(title, body string) string {
+	if strings.TrimSpace(title) == "" {
+		title = "Details"
+	}
+	return `<details class="labbit-collapse"><summary>` + inline(title) + `</summary><div class="labbit-collapse-body">` + RenderMarkdown(body) + `</div></details>`
+}
+
+func tableStart(lines []string, i int) ([]string, []string, bool) {
+	if i+1 >= len(lines) {
+		return nil, nil, false
+	}
+	header, ok := tableRow(lines[i])
+	if !ok {
+		return nil, nil, false
+	}
+	separator, ok := tableRow(lines[i+1])
+	if !ok || len(separator) != len(header) {
+		return nil, nil, false
+	}
+	align := make([]string, len(separator))
+	for i, cell := range separator {
+		value := strings.TrimSpace(cell)
+		if len(value) < 3 {
+			return nil, nil, false
+		}
+		left := strings.HasPrefix(value, ":")
+		right := strings.HasSuffix(value, ":")
+		trimmed := strings.Trim(value, ":")
+		if len(trimmed) < 3 || strings.Trim(trimmed, "-") != "" {
+			return nil, nil, false
+		}
+		switch {
+		case left && right:
+			align[i] = "center"
+		case right:
+			align[i] = "right"
+		default:
+			align[i] = "left"
+		}
+	}
+	return header, align, true
+}
+
+func tableRow(line string) ([]string, bool) {
+	trim := strings.TrimSpace(strings.TrimRight(line, "\r"))
+	if trim == "" || !strings.Contains(trim, "|") {
+		return nil, false
+	}
+	if strings.HasPrefix(trim, "|") {
+		trim = strings.TrimPrefix(trim, "|")
+	}
+	if strings.HasSuffix(trim, "|") {
+		trim = strings.TrimSuffix(trim, "|")
+	}
+	parts := strings.Split(trim, "|")
+	if len(parts) < 2 {
+		return nil, false
+	}
+	cells := make([]string, len(parts))
+	for i, part := range parts {
+		cells[i] = strings.TrimSpace(part)
+	}
+	return cells, true
+}
+
+func renderTable(header, align []string, rows [][]string) string {
+	var out strings.Builder
+	out.WriteString(`<div class="labbit-table-wrap"><table class="labbit-table"><thead><tr>`)
+	for i, cell := range header {
+		out.WriteString(`<th` + tableAlignAttr(align, i) + `>` + inline(cell) + `</th>`)
+	}
+	out.WriteString(`</tr></thead><tbody>`)
+	for _, row := range rows {
+		out.WriteString(`<tr>`)
+		for i := range header {
+			cell := ""
+			if i < len(row) {
+				cell = row[i]
+			}
+			out.WriteString(`<td` + tableAlignAttr(align, i) + `>` + inline(cell) + `</td>`)
+		}
+		out.WriteString(`</tr>`)
+	}
+	out.WriteString(`</tbody></table></div>`)
+	return out.String()
+}
+
+func tableAlignAttr(align []string, i int) string {
+	if i >= len(align) || align[i] == "" || align[i] == "left" {
+		return ""
+	}
+	return ` class="align-` + align[i] + `"`
 }
 
 func inline(s string) string {

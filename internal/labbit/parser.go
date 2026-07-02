@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode"
@@ -218,12 +219,15 @@ func taskPrompt(inner, taskID string, inlineHints []Hint) string {
 			}
 			if skipDepth > 0 {
 				skipDepth++
+				continue
 			}
+			writeComponentStart(&out, t)
 		case xml.EndElement:
 			if skipDepth > 0 {
 				skipDepth--
 				continue
 			}
+			writeComponentEnd(&out, t)
 		case xml.CharData:
 			if skipDepth == 0 {
 				out.Write([]byte(t))
@@ -241,13 +245,58 @@ func inlineHintPlaceholder(taskID, hintID, title string) string {
 }
 
 func componentMarkdown(s string) string {
-	s = strings.ReplaceAll(s, "<![CDATA[", "")
-	s = strings.ReplaceAll(s, "]]>", "")
-	s = strings.ReplaceAll(s, "<note>", "\n> Note: ")
-	s = strings.ReplaceAll(s, "</note>", "\n")
-	s = strings.ReplaceAll(s, "<callout>", "\n> ")
-	s = strings.ReplaceAll(s, "</callout>", "\n")
-	return dedentMarkdown(textOnly(s))
+	decoder := xml.NewDecoder(strings.NewReader("<root>" + s + "</root>"))
+	var out strings.Builder
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			writeComponentStart(&out, t)
+		case xml.EndElement:
+			writeComponentEnd(&out, t)
+		case xml.CharData:
+			out.Write([]byte(t))
+		}
+	}
+	if out.Len() == 0 {
+		return dedentMarkdown(textOnly(s))
+	}
+	return dedentMarkdown(out.String())
+}
+
+func writeComponentStart(out *strings.Builder, el xml.StartElement) {
+	switch el.Name.Local {
+	case "note":
+		out.WriteString("\n> Note: ")
+	case "callout":
+		out.WriteString("\n> ")
+	case "collapse":
+		title := "Details"
+		for _, attr := range el.Attr {
+			if attr.Name.Local == "title" && strings.TrimSpace(attr.Value) != "" {
+				title = strings.TrimSpace(attr.Value)
+				break
+			}
+		}
+		out.WriteString("\n\n")
+		out.WriteString(collapseStartMarker)
+		out.WriteString(url.QueryEscape(title))
+		out.WriteString("\n\n")
+	}
+}
+
+func writeComponentEnd(out *strings.Builder, el xml.EndElement) {
+	switch el.Name.Local {
+	case "note", "callout":
+		out.WriteString("\n")
+	case "collapse":
+		out.WriteString("\n\n")
+		out.WriteString(collapseEndMarker)
+		out.WriteString("\n\n")
+	}
 }
 
 func dedentMarkdown(s string) string {

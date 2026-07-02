@@ -300,7 +300,7 @@ templ LabTopicSection(doc *labbit.Document, topic labbit.Topic, selectedBlock st
 							<h2>{ task.Title }</h2>
 						</div>
 						if task.AnswerCount > 0 {
-							<button class="hint-toggle" type="button" data-hint-toggle data-hint-target={ "#hint-" + task.ID } data-share-target={ task.ID } hx-get={ hintPath(doc, task.ID) } hx-target={ "#hint-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" hx-disabled-elt="this" aria-label="Toggle solution" aria-expanded="false" aria-pressed="false">
+							<button class="hint-toggle" type="button" data-hint-toggle data-hint-target={ "#hint-" + task.ID } data-share-target={ task.ID } data-tooltip="Show Solution" hx-get={ hintPath(doc, task.ID) } hx-target={ "#hint-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" hx-disabled-elt="this" aria-label="Show Solution" aria-expanded="false" aria-pressed="false">
 								<svg viewBox="0 0 24 24" aria-hidden="true">
 									<path d="M9 21h6"></path>
 									<path d="M10 17h4"></path>

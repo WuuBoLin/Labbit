@@ -121,6 +121,13 @@ Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option
 - If both are used, `<hint>` blocks should be short inline answer chunks and `<solution>` should be the complete final procedure.
 - Legacy `<answer>` is accepted as an alias, but new files must use `<solution>`.
 
+`<collapse title="...">`
+
+- Visible collapsible reference content.
+- Use for optional background, examples, command output, tables, or supporting details that are not hidden answers.
+- This is not a hint: do not use it for solution-only material that should stay hidden until requested.
+- The body may contain normal supported Markdown.
+
 `<quiz>` and `<question>`
 
 - `<quiz>` contains one or more `<topic id="..." title="...">`.
@@ -202,8 +209,29 @@ Supported Markdown inside text bodies:
 - `#`, `##`, `###` headings
 - unordered lists with `-` or `*`
 - ordered lists like `1. Step`
+- pipe tables with a header separator row
 - inline code with backticks
 - fenced code blocks with language tags such as `sh`, `yaml`, `go`, `python`, `xml`, `ini`
+
+Table example:
+
+```markdown
+| Service | Port |
+| --- | ---: |
+| SSH | `22` |
+| HTTPS | `443` |
+```
+
+Collapsible example:
+
+````xml
+<collapse title="Reference ports"><![CDATA[
+| Service | Port |
+| --- | ---: |
+| SSH | `22` |
+| HTTPS | `443` |
+]]></collapse>
+````
 
 XML structural tags must remain real XML tags. Do not put `<hint>`, `<solution>`, `<task>`, `<question>`, or other Labbit tags inside CDATA.
 
