@@ -377,7 +377,7 @@ func writeComponentEnd(out *strings.Builder, el xml.EndElement) {
 }
 
 func dedentMarkdown(s string) string {
-	lines := strings.Split(strings.Trim(s, "\n\r\t "), "\n")
+	lines := strings.Split(strings.Trim(s, "\n\r"), "\n")
 	minIndent := -1
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -385,7 +385,11 @@ func dedentMarkdown(s string) string {
 		}
 		indent := 0
 		for _, r := range line {
-			if r != ' ' && r != '\t' {
+			if r == '\t' {
+				indent += 4
+				continue
+			}
+			if r != ' ' {
 				break
 			}
 			indent++
@@ -399,8 +403,18 @@ func dedentMarkdown(s string) string {
 	}
 	for i, line := range lines {
 		remove := 0
-		for remove < minIndent && remove < len(line) && (line[remove] == ' ' || line[remove] == '\t') {
-			remove++
+		remaining := minIndent
+		for remove < len(line) && remaining > 0 {
+			switch line[remove] {
+			case ' ':
+				remaining--
+				remove++
+			case '\t':
+				remaining -= 4
+				remove++
+			default:
+				remaining = 0
+			}
 		}
 		lines[i] = line[remove:]
 	}

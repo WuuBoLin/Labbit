@@ -76,6 +76,100 @@ func TestRenderMarkdownPipeTextWithoutSeparatorIsParagraph(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownBasicSyntax(t *testing.T) {
+	html := RenderMarkdown(`
+Heading
+=======
+
+#### Checklist
+
+Use **strong**, *emphasis*, and ~~stale~~ text.
+
+> Quote
+> - nested item
+
+1. first
+2. second
+
+---
+`)
+	for _, want := range []string{
+		`<h1 id="heading">Heading</h1>`,
+		`<h4 id="checklist">Checklist</h4>`,
+		`<strong>strong</strong>`,
+		`<em>emphasis</em>`,
+		`<del>stale</del>`,
+		`<blockquote>`,
+		`<ol>`,
+		`<hr />`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in rendered markdown: %s", want, html)
+		}
+	}
+}
+
+func TestRenderMarkdownExtendedSyntax(t *testing.T) {
+	html := RenderMarkdown(`
+- [x] done
+- [ ] next
+
+Term
+: Definition text
+
+Footnote marker.[^n]
+
+[^n]: Footnote body
+`)
+	for _, want := range []string{
+		`<input checked="" disabled="" type="checkbox" />`,
+		`<input disabled="" type="checkbox" />`,
+		`<dl>`,
+		`<dt>Term</dt>`,
+		`<dd>Definition text</dd>`,
+		`class="footnote-ref"`,
+		`Footnote body`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in rendered markdown: %s", want, html)
+		}
+	}
+}
+
+func TestRenderMarkdownLinksAndImagesAreConservative(t *testing.T) {
+	html := RenderMarkdown(`
+[safe](https://example.com)
+[fragment](#local)
+[bad](javascript:alert(1))
+![Remote diagram](https://example.com/diagram.png)
+`)
+	if !strings.Contains(html, `<a href="https://example.com">safe</a>`) {
+		t.Fatalf("safe link was not rendered: %s", html)
+	}
+	if !strings.Contains(html, `<a href="#local">fragment</a>`) {
+		t.Fatalf("fragment link was not rendered: %s", html)
+	}
+	if strings.Contains(html, `javascript:`) || strings.Contains(html, `<a href="">bad</a>`) {
+		t.Fatalf("dangerous link was made active: %s", html)
+	}
+	if strings.Contains(html, `<img`) {
+		t.Fatalf("markdown image tag was rendered: %s", html)
+	}
+	if !strings.Contains(html, `Remote diagram`) {
+		t.Fatalf("markdown image alt text was not preserved: %s", html)
+	}
+}
+
+func TestRenderMarkdownEscapesRawHTML(t *testing.T) {
+	html := RenderMarkdown(`<script>alert(1)</script>`)
+	if strings.Contains(html, "<script>") || strings.Contains(html, "raw HTML omitted") {
+		t.Fatalf("raw HTML was not escaped cleanly: %s", html)
+	}
+	if !strings.Contains(html, `&lt;script&gt;alert(1)&lt;/script&gt;`) {
+		t.Fatalf("raw HTML content was not preserved as escaped text: %s", html)
+	}
+}
+
 func TestRenderMarkdownSVGImageSanitizesContent(t *testing.T) {
 	values := url.Values{}
 	values.Set("type", "svg")

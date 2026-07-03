@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/xml"
-	"html"
 	"net/url"
 	"regexp"
 	"strings"
@@ -15,6 +14,15 @@ import (
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/yuin/goldmark"
+	gast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/util"
+	"html"
 )
 
 var inlineCodeRE = regexp.MustCompile("`([^`]+)`")
@@ -29,51 +37,22 @@ const (
 func RenderMarkdown(src string) string {
 	lines := strings.Split(strings.TrimSpace(src), "\n")
 	var out strings.Builder
-	var inCode bool
-	var codeLang string
-	var code strings.Builder
-	var inUL bool
-	var inOL bool
+	var segment []string
 
-	closeLists := func() {
-		if inUL {
-			out.WriteString("</ul>")
-			inUL = false
+	flush := func() {
+		if len(segment) == 0 {
+			return
 		}
-		if inOL {
-			out.WriteString("</ol>")
-			inOL = false
-		}
+		out.WriteString(renderMarkdownSegment(strings.Join(segment, "\n")))
+		segment = nil
 	}
 
 	for i := 0; i < len(lines); i++ {
 		raw := lines[i]
 		line := strings.TrimRight(raw, "\r")
 		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "```") {
-			if inCode {
-				out.WriteString(renderCodeBlock(code.String(), codeLang))
-				code.Reset()
-				codeLang = ""
-				inCode = false
-			} else {
-				closeLists()
-				codeLang = strings.TrimSpace(strings.TrimPrefix(trim, "```"))
-				inCode = true
-			}
-			continue
-		}
-		if inCode {
-			code.WriteString(line)
-			code.WriteByte('\n')
-			continue
-		}
-		if trim == "" {
-			closeLists()
-			continue
-		}
 		if strings.HasPrefix(trim, collapseStartMarker) {
-			closeLists()
+			flush()
 			title := strings.TrimSpace(strings.TrimPrefix(trim, collapseStartMarker))
 			if decoded, err := url.QueryUnescape(title); err == nil {
 				title = decoded
@@ -91,82 +70,226 @@ func RenderMarkdown(src string) string {
 			continue
 		}
 		if strings.HasPrefix(trim, imageMarker) {
-			closeLists()
+			flush()
 			out.WriteString(renderImageMarker(strings.TrimSpace(strings.TrimPrefix(trim, imageMarker))))
 			continue
 		}
 		if strings.HasPrefix(trim, `<button class="inline-answer-toggle"`) {
-			closeLists()
+			flush()
 			out.WriteString(trim)
 			continue
 		}
-		if header, align, ok := tableStart(lines, i); ok {
-			closeLists()
-			var rows [][]string
-			i += 2
-			for i < len(lines) {
-				cells, ok := tableRow(lines[i])
-				if !ok {
-					i--
-					break
-				}
-				rows = append(rows, cells)
-				i++
-			}
-			if i >= len(lines) {
-				i = len(lines) - 1
-			}
-			out.WriteString(renderTable(header, align, rows))
-			continue
-		}
-		if strings.HasPrefix(trim, "### ") {
-			closeLists()
-			out.WriteString(`<h3 class="mt-6 text-base font-semibold text-zinc-100">` + inline(trim[4:]) + `</h3>`)
-			continue
-		}
-		if strings.HasPrefix(trim, "## ") {
-			closeLists()
-			out.WriteString(`<h2 class="mt-8 text-xl font-semibold text-zinc-50">` + inline(trim[3:]) + `</h2>`)
-			continue
-		}
-		if strings.HasPrefix(trim, "# ") {
-			closeLists()
-			out.WriteString(`<h1 class="mt-2 text-2xl font-semibold text-zinc-50">` + inline(trim[2:]) + `</h1>`)
-			continue
-		}
-		if strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* ") {
-			if inOL {
-				out.WriteString("</ol>")
-				inOL = false
-			}
-			if !inUL {
-				out.WriteString(`<ul class="labbit-list">`)
-				inUL = true
-			}
-			out.WriteString(`<li>` + inline(trim[2:]) + `</li>`)
-			continue
-		}
-		if orderedItem(trim) {
-			if inUL {
-				out.WriteString("</ul>")
-				inUL = false
-			}
-			if !inOL {
-				out.WriteString(`<ol class="labbit-ordered">`)
-				inOL = true
-			}
-			item := strings.TrimSpace(trim[strings.Index(trim, ".")+1:])
-			out.WriteString(`<li>` + inline(item) + `</li>`)
-			continue
-		}
-		closeLists()
-		out.WriteString(`<p>` + inline(trim) + `</p>`)
+		segment = append(segment, line)
 	}
-	if inCode {
-		out.WriteString(renderCodeBlock(code.String(), codeLang))
-	}
-	closeLists()
+	flush()
 	return out.String()
+}
+
+func renderMarkdownSegment(src string) string {
+	src = strings.TrimSpace(src)
+	if src == "" {
+		return ""
+	}
+	var out bytes.Buffer
+	if err := markdownRenderer().Convert([]byte(src), &out); err != nil {
+		return `<p>` + html.EscapeString(src) + `</p>`
+	}
+	return strings.TrimSpace(out.String())
+}
+
+func markdownRenderer() goldmark.Markdown {
+	return goldmark.New(
+		goldmark.WithExtensions(
+			extension.GFM,
+			extension.DefinitionList,
+			extension.Footnote,
+		),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+		goldmark.WithRendererOptions(
+			gmhtml.WithXHTML(),
+			renderer.WithNodeRenderers(util.Prioritized(labbitMarkdownRenderer{}, 1)),
+		),
+	)
+}
+
+type labbitMarkdownRenderer struct{}
+
+func (r labbitMarkdownRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(gast.KindCodeBlock, r.renderCodeBlock)
+	reg.Register(gast.KindCodeSpan, r.renderCodeSpan)
+	reg.Register(gast.KindFencedCodeBlock, r.renderFencedCodeBlock)
+	reg.Register(gast.KindHTMLBlock, r.renderHTMLBlock)
+	reg.Register(gast.KindImage, r.renderImage)
+	reg.Register(gast.KindLink, r.renderLink)
+	reg.Register(gast.KindAutoLink, r.renderAutoLink)
+	reg.Register(gast.KindRawHTML, r.renderRawHTML)
+	reg.Register(east.KindTable, r.renderTable)
+	reg.Register(east.KindTableHeader, r.renderTableHeader)
+	reg.Register(east.KindTableRow, r.renderTableRow)
+	reg.Register(east.KindTableCell, r.renderTableCell)
+}
+
+func (r labbitMarkdownRenderer) renderCodeBlock(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	_, _ = w.WriteString(renderCodeBlock(string(node.Lines().Value(source)), ""))
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderFencedCodeBlock(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	block := node.(*gast.FencedCodeBlock)
+	_, _ = w.WriteString(renderCodeBlock(string(block.Lines().Value(source)), string(block.Language(source))))
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderCodeSpan(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		_, _ = w.WriteString("</code>")
+		return gast.WalkContinue, nil
+	}
+	_, _ = w.WriteString(`<code class="inline-code">`)
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		text := child.(*gast.Text).Segment.Value(source)
+		if bytes.HasSuffix(text, []byte("\n")) {
+			text = append(text[:len(text)-1], ' ')
+		}
+		_, _ = w.Write(util.EscapeHTML(text))
+	}
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderHTMLBlock(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	_, _ = w.Write(util.EscapeHTML(node.Text(source)))
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderImage(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	image := node.(*gast.Image)
+	if len(image.Text(source)) > 0 {
+		_, _ = w.Write(util.EscapeHTML(image.Text(source)))
+	}
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderLink(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	link := node.(*gast.Link)
+	if gmhtml.IsDangerousURL(link.Destination) {
+		return gast.WalkContinue, nil
+	}
+	if entering {
+		_, _ = w.WriteString(`<a href="`)
+		_, _ = w.Write(util.EscapeHTML(util.URLEscape(link.Destination, false)))
+		_, _ = w.WriteString(`">`)
+	} else {
+		_, _ = w.WriteString(`</a>`)
+	}
+	return gast.WalkContinue, nil
+}
+
+func (r labbitMarkdownRenderer) renderAutoLink(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	link := node.(*gast.AutoLink)
+	destination := link.URL(source)
+	if link.AutoLinkType == gast.AutoLinkEmail && !bytes.HasPrefix(bytes.ToLower(destination), []byte("mailto:")) {
+		destination = append([]byte("mailto:"), destination...)
+	}
+	if gmhtml.IsDangerousURL(destination) {
+		_, _ = w.Write(util.EscapeHTML(link.Label(source)))
+		return gast.WalkSkipChildren, nil
+	}
+	_, _ = w.WriteString(`<a href="`)
+	_, _ = w.Write(util.EscapeHTML(util.URLEscape(destination, false)))
+	_, _ = w.WriteString(`">`)
+	_, _ = w.Write(util.EscapeHTML(link.Label(source)))
+	_, _ = w.WriteString(`</a>`)
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderRawHTML(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if !entering {
+		return gast.WalkContinue, nil
+	}
+	_, _ = w.Write(util.EscapeHTML(node.Text(source)))
+	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderTable(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if entering {
+		_, _ = w.WriteString(`<div class="labbit-table-wrap"><table class="labbit-table">`)
+	} else {
+		_, _ = w.WriteString(`</table></div>`)
+	}
+	return gast.WalkContinue, nil
+}
+
+func (r labbitMarkdownRenderer) renderTableHeader(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if entering {
+		_, _ = w.WriteString("<thead><tr>")
+	} else {
+		_, _ = w.WriteString("</tr></thead>")
+		if node.NextSibling() != nil {
+			_, _ = w.WriteString("<tbody>")
+		}
+	}
+	return gast.WalkContinue, nil
+}
+
+func (r labbitMarkdownRenderer) renderTableRow(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	if entering {
+		_, _ = w.WriteString("<tr>")
+	} else {
+		_, _ = w.WriteString("</tr>")
+		if node.Parent().LastChild() == node {
+			_, _ = w.WriteString("</tbody>")
+		}
+	}
+	return gast.WalkContinue, nil
+}
+
+func (r labbitMarkdownRenderer) renderTableCell(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	cell := node.(*east.TableCell)
+	tag := "td"
+	if node.Parent().Kind() == east.KindTableHeader {
+		tag = "th"
+	}
+	if entering {
+		_ = w.WriteByte('<')
+		_, _ = w.WriteString(tag)
+		if class := tableCellAlignClass(cell.Alignment); class != "" {
+			_, _ = w.WriteString(` class="`)
+			_, _ = w.WriteString(class)
+			_ = w.WriteByte('"')
+		}
+		_ = w.WriteByte('>')
+	} else {
+		_, _ = w.WriteString("</")
+		_, _ = w.WriteString(tag)
+		_ = w.WriteByte('>')
+	}
+	return gast.WalkContinue, nil
+}
+
+func tableCellAlignClass(align east.Alignment) string {
+	switch align {
+	case east.AlignCenter:
+		return "align-center"
+	case east.AlignRight:
+		return "align-right"
+	default:
+		return ""
+	}
 }
 
 func renderCollapse(title, body string) string {
