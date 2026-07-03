@@ -1,8 +1,8 @@
 package web
 
-templ Base(title string) {
+templ Base(title string, theme string) {
 	<!DOCTYPE html>
-	<html lang="en" class="h-full bg-black">
+	<html lang="en" class="h-full" data-theme={ theme }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -18,7 +18,7 @@ templ Base(title string) {
 			<script src="/assets/js/htmx.min.js"></script>
 			<script src="/assets/js/labbit.js" defer></script>
 		</head>
-		<body class="min-h-full bg-black text-zinc-100 antialiased">
+		<body class="min-h-full antialiased">
 			<main>
 				{ children... }
 			</main>

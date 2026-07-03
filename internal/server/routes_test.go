@@ -8,6 +8,7 @@ import (
 	"labbit/internal/labbit"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -62,5 +63,77 @@ func TestStaticCacheHeaders(t *testing.T) {
 	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)
 	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
 		t.Fatalf("HTMX Cache-Control = %q", got)
+	}
+}
+
+func TestUploadPageUsesThemeCookie(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "labbit.theme", Value: "light"})
+	resp := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `data-theme="light"`) {
+		t.Fatalf("upload page did not render light theme: %s", resp.Body.String())
+	}
+}
+
+func TestUploadPageDefaultsInvalidThemeCookieToDark(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "labbit.theme", Value: "solarized"})
+	resp := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), `data-theme="dark"`) {
+		t.Fatalf("upload page did not fall back to dark theme: %s", resp.Body.String())
+	}
+}
+
+func TestThemeHandlerSetsCookieAndReturnsToggle(t *testing.T) {
+	form := url.Values{"theme": {"light"}}
+	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	var themeCookie *http.Cookie
+	for _, cookie := range resp.Result().Cookies() {
+		if cookie.Name == "labbit.theme" {
+			themeCookie = cookie
+			break
+		}
+	}
+	if themeCookie == nil || themeCookie.Value != "light" || themeCookie.Path != "/" {
+		t.Fatalf("theme cookie = %#v", themeCookie)
+	}
+	if got := resp.Header().Get("HX-Trigger"); !strings.Contains(got, `"theme":"light"`) {
+		t.Fatalf("HX-Trigger = %q", got)
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, `data-theme-toggle`) || !strings.Contains(body, `value="dark"`) {
+		t.Fatalf("toggle fragment did not render next dark action: %s", body)
+	}
+}
+
+func TestThemeHandlerDefaultsInvalidThemeToDark(t *testing.T) {
+	form := url.Values{"theme": {"sepia"}}
+	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	if got := resp.Result().Cookies()[0].Value; got != "dark" {
+		t.Fatalf("theme cookie = %q", got)
+	}
+	if !strings.Contains(resp.Body.String(), `value="light"`) {
+		t.Fatalf("toggle fragment did not fall back to dark: %s", resp.Body.String())
 	}
 }

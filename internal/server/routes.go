@@ -46,6 +46,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	e.GET("/apple-touch-icon.png", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/assets/img/icon-180.png")
 	})
+	e.POST("/theme", s.themeHandler)
 	e.POST("/upload", s.uploadHandler)
 	e.GET("/docs/:uid", s.docUIDRedirectHandler)
 	e.GET("/docs/:uid/:slug", s.viewerHandler)
@@ -64,7 +65,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 }
 
 func (s *Server) uploadPageHandler(c echo.Context) error {
-	return render(c, http.StatusOK, web.UploadPage(""))
+	return render(c, http.StatusOK, web.UploadPage("", requestTheme(c)))
 }
 
 func (s *Server) uploadHandler(c echo.Context) error {
@@ -93,7 +94,7 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	if existing, err := s.labs.GetDocumentByHash(c.Request().Context(), hash); err == nil {
 		slog.Info("duplicate lab upload reused", "uid", existing.UID, "slug", existing.Slug, "filename", file.Filename)
 		c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", existing.UID, existing.Slug))
-		return render(c, http.StatusOK, web.ViewerPage(existing))
+		return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
 	}
 
 	doc, err := labbit.Parse(bytes.NewReader(body))
@@ -107,13 +108,13 @@ func (s *Server) uploadHandler(c echo.Context) error {
 		slog.Error("lab save failed", "uid", doc.UID, "slug", doc.Slug, "error", err)
 		if existing, lookupErr := s.labs.GetDocumentByHash(c.Request().Context(), hash); lookupErr == nil {
 			c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", existing.UID, existing.Slug))
-			return render(c, http.StatusOK, web.ViewerPage(existing))
+			return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
 		}
 		return s.renderUploadError(c, http.StatusInternalServerError, "The lab could not be saved.")
 	}
 	slog.Info("lab uploaded", "uid", doc.UID, "slug", doc.Slug, "title", doc.Title, "filename", file.Filename)
 	c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", doc.UID, doc.Slug))
-	return render(c, http.StatusOK, web.ViewerPage(doc))
+	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c)))
 }
 
 func (s *Server) renderUploadError(c echo.Context, status int, message string) error {
@@ -122,7 +123,7 @@ func (s *Server) renderUploadError(c echo.Context, status int, message string) e
 		c.Response().Header().Set("HX-Reswap", "innerHTML")
 		return render(c, http.StatusOK, web.UploadError(message))
 	}
-	return render(c, status, web.UploadPage(message))
+	return render(c, status, web.UploadPage(message, requestTheme(c)))
 }
 
 func fileHash(body []byte) string {
@@ -151,7 +152,7 @@ func (s *Server) viewerHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, web.ViewerPage(doc))
+	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c)))
 }
 
 func (s *Server) sectionHandler(c echo.Context) error {
@@ -164,9 +165,23 @@ func (s *Server) sectionHandler(c echo.Context) error {
 		if !sectionExists(doc, section) {
 			return echo.NewHTTPError(http.StatusNotFound, "section not found")
 		}
-		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block")))
+		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c)))
 	}
 	return renderSection(c, doc, section, c.QueryParam("block"))
+}
+
+func (s *Server) themeHandler(c echo.Context) error {
+	theme := normalizeTheme(c.FormValue("theme"))
+	http.SetCookie(c.Response(), &http.Cookie{
+		Name:     "labbit.theme",
+		Value:    theme,
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 365,
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+	c.Response().Header().Set("HX-Trigger", fmt.Sprintf(`{"labbitThemeChanged":{"theme":"%s"}}`, theme))
+	return render(c, http.StatusOK, web.ThemeToggle(theme))
 }
 
 func renderSection(c echo.Context, doc *labbit.Document, section, selectedBlock string) error {
@@ -266,8 +281,24 @@ func (s *Server) loadDocument(c echo.Context) (*labbit.Document, error) {
 }
 
 func render(c echo.Context, status int, component templ.Component) error {
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
 	c.Response().WriteHeader(status)
 	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+func requestTheme(c echo.Context) string {
+	cookie, err := c.Cookie("labbit.theme")
+	if err != nil {
+		return "dark"
+	}
+	return normalizeTheme(cookie.Value)
+}
+
+func normalizeTheme(theme string) string {
+	if strings.EqualFold(strings.TrimSpace(theme), "light") {
+		return "light"
+	}
+	return "dark"
 }
 
 func staticCache(next http.Handler) http.Handler {

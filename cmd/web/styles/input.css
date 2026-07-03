@@ -4,10 +4,71 @@
   :root {
     --accent: #1d9bf0;
     --accent-rgb: 29 155 240;
+    --page-bg: #000000;
+    --panel-bg: rgb(9 9 11 / 0.8);
+    --panel-solid: #09090b;
+    --panel-muted: rgb(24 24 27 / 0.7);
+    --sidebar-bg: #000000;
+    --sidebar-hover-bg: #000000;
+    --text-strong: #fafafa;
+    --text-main: #d4d4d8;
+    --text-muted: #a1a1aa;
+    --text-faint: #52525b;
+    --border-main: #27272a;
+    --border-muted: #18181b;
+    --control-bg: #09090b;
+    --control-hover-bg: #18181b;
+    --sidebar-item-hover-bg: #09090b;
+    --code-bg: #18181b;
+    --modal-scrim: rgb(0 0 0 / 0.75);
+    --shadow-color: rgb(0 0 0 / 0.4);
+    --svg-text: #e4e4e7;
+    --svg-text-halo: rgb(0 0 0 / 0.6);
+    --success-bg: rgb(2 44 34 / 0.3);
+    --success-border: rgb(6 95 70);
+    --success-text: rgb(209 250 229);
+    --error-bg: rgb(69 10 10 / 0.3);
+    --error-border: rgb(127 29 29 / 0.85);
+    --error-text: rgb(254 226 226);
+  }
+
+  html[data-theme="light"] {
+    --page-bg: #f4f4f5;
+    --panel-bg: rgb(255 255 255 / 0.86);
+    --panel-solid: #ffffff;
+    --panel-muted: rgb(244 244 245 / 0.9);
+    --sidebar-bg: #ffffff;
+    --sidebar-hover-bg: #ffffff;
+    --text-strong: #18181b;
+    --text-main: #3f3f46;
+    --text-muted: #52525b;
+    --text-faint: #71717a;
+    --border-main: #d4d4d8;
+    --border-muted: #e4e4e7;
+    --control-bg: #fafafa;
+    --control-hover-bg: #f4f4f5;
+    --sidebar-item-hover-bg: #eef2ff;
+    --code-bg: #f4f4f5;
+    --modal-scrim: rgb(24 24 27 / 0.35);
+    --shadow-color: rgb(39 39 42 / 0.14);
+    --svg-text: #27272a;
+    --svg-text-halo: rgb(255 255 255 / 0.92);
+    --success-bg: rgb(209 250 229 / 0.68);
+    --success-border: rgb(5 150 105 / 0.7);
+    --success-text: rgb(6 78 59);
+    --error-bg: rgb(254 226 226 / 0.7);
+    --error-border: rgb(220 38 38 / 0.55);
+    --error-text: rgb(127 29 29);
+  }
+
+  html {
+    background: var(--page-bg);
   }
 
   body {
     font-family: MonoLisaText, "MonoLisa Text", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--page-bg);
+    color: var(--text-strong);
   }
 
   code,
@@ -69,7 +130,7 @@
   }
 
   .sidebar {
-    @apply border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0 lg:border-r;
+    @apply relative border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0 lg:border-r;
   }
 
   .sidebar-collapsed .sidebar {
@@ -299,6 +360,10 @@
   .labbit-svg svg text,
   .labbit-svg svg tspan {
     fill: currentColor !important;
+    paint-order: stroke;
+    stroke: var(--svg-text-halo) !important;
+    stroke-linejoin: round;
+    stroke-width: 0.18rem;
   }
 
   .code-shell {
@@ -576,5 +641,351 @@
 
   .keybinding-grid kbd {
     @apply rounded border border-zinc-700 bg-black px-1.5 py-0.5 text-[11px] text-zinc-300;
+  }
+
+  .upload-panel {
+    background: var(--panel-bg);
+    border-color: var(--border-main);
+    box-shadow: 0 1.25rem 3.5rem var(--shadow-color);
+  }
+
+  .upload-panel label,
+  article > h1,
+  .task-title h2,
+  .modal-head h2,
+  .search-result strong,
+  .brand-text strong {
+    color: var(--text-strong);
+  }
+
+  .upload-panel + *,
+  .upload-panel p,
+  main section h1,
+  .solution-title,
+  .keybinding-grid span {
+    color: var(--text-main);
+  }
+
+  main section > div > p:not(.accent-text),
+  .brand-text small,
+  .search-trigger,
+  .search-trigger kbd,
+  .nav-link,
+  .keybinding-grid p,
+  .search-result small,
+  .empty-results,
+  .question-head {
+    color: var(--text-muted);
+  }
+
+  .upload-file,
+  .secondary-btn,
+  .icon-btn,
+  .search-trigger,
+  .inline-answer-toggle,
+  .hint-toggle,
+  .copy-btn,
+  .keybinding-grid kbd {
+    background: var(--control-bg);
+    border-color: var(--border-main);
+    color: var(--text-main);
+  }
+
+  .secondary-btn:hover,
+  .icon-btn:hover,
+  .search-trigger:hover,
+  .inline-answer-toggle:hover,
+  .hint-toggle:hover,
+  .copy-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .labbit-shell,
+  .sidebar,
+  .sidebar-collapsed .sidebar:hover {
+    background: var(--page-bg);
+  }
+
+  .sidebar {
+    border-color: var(--border-muted);
+  }
+
+  .sidebar-collapsed .sidebar:hover {
+    border-color: var(--border-main);
+    box-shadow: 0 1.5rem 4rem var(--shadow-color);
+  }
+
+  .sidebar-resizer {
+    background: var(--panel-solid);
+  }
+
+  .sidebar-resizer:hover,
+  .nav-link:hover,
+  .search-result:hover,
+  .search-result.active {
+    background: var(--control-hover-bg);
+  }
+
+  html[data-theme="light"] .sidebar .nav-link:hover,
+  html[data-theme="light"] .sidebar .search-trigger:hover {
+    background: var(--sidebar-item-hover-bg) !important;
+    border-color: rgb(var(--accent-rgb) / 0.35) !important;
+    color: var(--text-strong) !important;
+  }
+
+  html[data-theme="light"] .sidebar .nav-link.active,
+  html[data-theme="light"] .sidebar .nav-link.active:hover {
+    color: var(--accent) !important;
+  }
+
+  .sidebar-bottom {
+    @apply absolute bottom-4 right-4 z-40 flex justify-end transition-[left,right,width] duration-200 ease-out;
+    width: 2.25rem;
+  }
+
+  .sidebar-collapsed .sidebar-bottom {
+    @apply lg:left-0 lg:right-auto lg:w-[var(--sidebar-rail-width)] lg:justify-center;
+  }
+
+  .sidebar-collapsed .sidebar:hover .sidebar-bottom {
+    @apply lg:left-auto lg:right-4 lg:w-9 lg:justify-end;
+  }
+
+  .theme-toggle-form {
+    @apply flex justify-center;
+  }
+
+  .theme-toggle {
+    @apply relative;
+  }
+
+  .theme-toggle svg {
+    @apply h-4 w-4 fill-none stroke-current stroke-2;
+  }
+
+  html[data-theme="dark"] .theme-toggle-sun,
+  html[data-theme="light"] .theme-toggle-moon {
+    @apply hidden;
+  }
+
+  .nav-heading {
+    color: var(--text-faint);
+  }
+
+  .nav-link.active {
+    background: var(--control-bg);
+    color: var(--accent);
+  }
+
+  .share-number {
+    background: var(--control-bg);
+    border-color: var(--border-main);
+    color: var(--accent);
+  }
+
+  .share-number:hover {
+    border-color: var(--accent);
+  }
+
+  .prose-dark,
+  .prose-dark p,
+  .prose-dark li,
+  .prose-dark dd,
+  .prose-dark blockquote {
+    color: var(--text-main);
+  }
+
+  .prose-dark h1,
+  .prose-dark h2,
+  .prose-dark h3,
+  .prose-dark h4,
+  .prose-dark h5,
+  .prose-dark h6,
+  .labbit-collapse summary {
+    color: var(--text-strong);
+  }
+
+  .prose-dark a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+
+  .prose-dark blockquote {
+    @apply border-l-2 pl-4;
+    border-color: rgb(var(--accent-rgb) / 0.5);
+  }
+
+  .prose-dark hr {
+    border-color: var(--border-main);
+  }
+
+  .prose-dark dl {
+    @apply space-y-2;
+  }
+
+  .prose-dark dt {
+    @apply font-semibold;
+    color: var(--text-strong);
+  }
+
+  .prose-dark dd {
+    @apply pl-4;
+  }
+
+  .prose-dark sup a {
+    text-decoration: none;
+  }
+
+  .inline-code,
+  .prose-dark p code,
+  .prose-dark li code,
+  .prose-dark td code,
+  .prose-dark dd code {
+    background: var(--code-bg);
+    color: var(--accent);
+  }
+
+  .prose-dark input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+
+  .labbit-table-wrap,
+  .labbit-collapse,
+  .labbit-image,
+  .code-shell,
+  .task-card,
+  .quiz-card,
+  .keybindings-box,
+  .search-box {
+    background: var(--panel-bg);
+    border-color: var(--border-main);
+  }
+
+  .labbit-table th,
+  .code-bar {
+    background: var(--panel-muted);
+    border-color: var(--border-main);
+    color: var(--text-strong);
+  }
+
+  .labbit-table td {
+    border-color: var(--border-muted);
+    color: var(--text-main);
+  }
+
+  .labbit-collapse-body,
+  .modal-head,
+  .search-box input {
+    border-color: var(--border-main);
+  }
+
+  .labbit-image {
+    background: var(--panel-solid);
+  }
+
+  .labbit-svg svg {
+    color: var(--svg-text);
+  }
+
+  .code-bar,
+  .highlighted-code span:not([style]) {
+    color: var(--text-muted);
+  }
+
+  .highlighted-code pre {
+    background: var(--code-bg) !important;
+  }
+
+  .hint-toggle::after {
+    background: var(--panel-solid);
+    border-color: var(--border-main);
+    box-shadow: 0 1rem 2rem var(--shadow-color);
+    color: var(--text-main);
+  }
+
+  .hint-toggle:disabled,
+  .inline-answer-toggle:disabled,
+  .secondary-btn:disabled {
+    border-color: var(--border-muted);
+    color: var(--text-faint);
+  }
+
+  .options label {
+    background: var(--panel-bg);
+    border-color: var(--border-main);
+    color: var(--text-main);
+  }
+
+  .options label:hover {
+    border-color: var(--accent);
+  }
+
+  .options label.correct,
+  .result-box.correct {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success-text);
+  }
+
+  .options label.incorrect,
+  .result-box.incorrect,
+  .upload-error {
+    background: var(--error-bg);
+    border-color: var(--error-border);
+    color: var(--error-text);
+  }
+
+  .search-modal,
+  .keybindings-modal {
+    background: var(--modal-scrim);
+  }
+
+  .search-box,
+  .keybindings-box {
+    box-shadow: 0 1.5rem 4rem var(--shadow-color);
+  }
+
+  .search-box input {
+    background: var(--panel-solid);
+    color: var(--text-strong);
+  }
+
+  .search-box input::placeholder {
+    color: var(--text-faint);
+  }
+}
+
+@layer utilities {
+  html[data-theme="light"] .text-zinc-50,
+  html[data-theme="light"] .text-zinc-100,
+  html[data-theme="light"] .text-zinc-200,
+  html[data-theme="light"] .hover\:text-zinc-100:hover {
+    color: var(--text-strong);
+  }
+
+  html[data-theme="light"] .text-zinc-300,
+  html[data-theme="light"] .text-zinc-400 {
+    color: var(--text-main);
+  }
+
+  html[data-theme="light"] .text-zinc-500,
+  html[data-theme="light"] .text-zinc-600 {
+    color: var(--text-muted);
+  }
+
+  html[data-theme="light"] .bg-black,
+  html[data-theme="light"] .bg-zinc-950,
+  html[data-theme="light"] .bg-zinc-950\/60,
+  html[data-theme="light"] .bg-zinc-950\/70,
+  html[data-theme="light"] .bg-zinc-950\/80,
+  html[data-theme="light"] .hover\:bg-zinc-950:hover,
+  html[data-theme="light"] .hover\:bg-zinc-900:hover {
+    background-color: var(--panel-solid);
+  }
+
+  html[data-theme="light"] .bg-black\/40 {
+    background-color: var(--panel-bg);
   }
 }

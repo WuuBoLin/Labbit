@@ -264,6 +264,11 @@
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
+  document.body.addEventListener("labbitThemeChanged", (event) => {
+    const theme = event.detail?.theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+  });
+
   document.addEventListener("DOMContentLoaded", () => {
     applySidebar();
     setActiveSection(qs("[data-section]")?.dataset.section || "overview");
