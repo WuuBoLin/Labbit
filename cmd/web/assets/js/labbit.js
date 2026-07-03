@@ -8,14 +8,9 @@
   const shell = () => qs(".labbit-shell");
   const searchItems = () => qsa("[data-search-result]");
   const searchOpen = () => !qs("[data-search-modal]")?.classList.contains("hidden");
-  const viewerRoot = () => location.pathname.replace(/\/(?:labs|quiz)\/.*$/, "").replace(/\/$/, "");
   const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
   const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
-  function sectionURL(section, block = "") {
-    if (!section || section === "overview") return viewerRoot();
-    const url = `${viewerRoot()}/${sectionTypeFor(section)}/${encodeURIComponent(section)}`;
-    return block && block !== section ? `${url}?block=${encodeURIComponent(block)}` : url;
-  }
+
   function modal(name, open) {
     const el = qs(`[data-${name}-modal]`);
     if (!el) return;
@@ -27,6 +22,7 @@
       input?.select();
     }
   }
+
   function selectSearch(index) {
     const items = searchItems();
     const box = qs("[data-search-results]");
@@ -38,36 +34,27 @@
     items[next].classList.add("active");
     items[next].scrollIntoView({ block: "nearest" });
   }
+
   function moveSearch(delta) {
     const current = Number(qs("[data-search-results]")?.dataset.selectedIndex);
     selectSearch(Number.isFinite(current) && current >= 0 ? current + delta : 0);
   }
+
   function activeSearch() {
     const items = searchItems(), index = Number(qs("[data-search-results]")?.dataset.selectedIndex);
     return items[index] || items[0];
   }
-  function setActiveSection(id) {
-    if (!id) return;
-    const root = shell();
-    if (root) root.dataset.currentSection = id;
-    qsa("[data-section-id]").forEach((el) => {
-      const active = el.dataset.sectionId === id;
-      el.classList.toggle("active", active);
-      if (active && root) root.dataset.currentSectionType = el.dataset.sectionType || "labs";
-    });
-  }
-  const sectionTypeFor = (section) => qs(`[data-section-id="${CSS.escape(section)}"]`)?.dataset.sectionType || shell()?.dataset.currentSectionType || "labs";
-  const sectionFor = (el) => el?.closest?.("[data-section]")?.dataset.section || shell()?.dataset.currentSection || "overview";
+
   function selectBlock(block, push = true, scroll = false) {
     if (!block) return;
     qsa("[data-action-block].selected").forEach((el) => el.classList.remove("selected"));
     block.classList.add("selected");
-    const section = sectionFor(block);
-    setActiveSection(section);
-    if (push) history.pushState(null, "", sectionURL(section, block.id));
+    if (push && block.dataset.blockUrl) history.pushState(null, "", block.dataset.blockUrl);
     if (scroll) block.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+
   const blocks = () => qsa("[data-action-block]").filter((el) => el.offsetParent !== null);
+
   function currentBlockIndex(items) {
     const selected = qs("[data-action-block].selected");
     if (selected) return Math.max(0, items.indexOf(selected));
@@ -83,21 +70,32 @@
     const items = blocks();
     if (!items.length) return;
     const next = Math.max(0, Math.min(items.length - 1, currentBlockIndex(items) + delta));
-    selectBlock(items[next], true, true);
+    const block = items[next];
+    const link = qs("[data-block-link]", block);
+    if (link) {
+      markPending(link);
+      link.click();
+    } else {
+      selectBlock(block, true, true);
+    }
   }
 
   function moveSection(delta) {
     const links = qsa(".nav-link[data-section-id]");
-    const current = shell()?.dataset.currentSection || "overview";
+    const current = qs(".nav-link.active")?.dataset.sectionId || qs("#content [data-section]")?.dataset.section || "overview";
     const index = Math.max(0, links.findIndex((el) => el.dataset.sectionId === current));
-    links[Math.max(0, Math.min(links.length - 1, index + delta))]?.click();
+    const link = links[Math.max(0, Math.min(links.length - 1, index + delta))];
+    if (link) {
+      markPending(link);
+      link.click();
+    }
   }
 
   function actOnBlock() {
     const items = blocks(), block = qs("[data-action-block].selected") || items[currentBlockIndex(items)];
     if (!block) return;
-    const solutionButton = qs("[data-solution-toggle]", block);
-    if (solutionButton) return solutionButton.click();
+    const solution = qs("[data-solution-toggle]", block);
+    if (solution) return solution.click();
     const inline = qs("[data-inline-hint-toggle]", block), quiz = qs("[data-quiz-submit]:not(:disabled)", block);
     (inline || quiz)?.click();
   }
@@ -143,9 +141,9 @@
     const move = (e) => {
       const width = rem(e.clientX);
       if (width < snapRem) {
-	root.classList.add("sidebar-collapsed");
-	localStorage.setItem("labbit.sidebar.collapsed", "true");
-	return;
+        root.classList.add("sidebar-collapsed");
+        localStorage.setItem("labbit.sidebar.collapsed", "true");
+        return;
       }
       const clamped = Math.max(minRem, Math.min(maxRem, width));
       root.classList.remove("sidebar-collapsed");
@@ -161,21 +159,13 @@
     document.addEventListener("mouseup", up);
   }
 
-  function fetchInline(button) {
-    const task = button.dataset.taskId;
-    const hint = button.dataset.hintId;
-    if (!task || !hint || button.disabled || !window.htmx) return;
-    button.disabled = true;
-    button.classList.add("loading");
-    window.htmx.ajax("GET", `${viewerRoot()}/keys/labs/${encodeURIComponent(task)}/${encodeURIComponent(hint)}`, {
-      target: button,
-      swap: "outerHTML",
-    });
-  }
-
   function markPending(el) {
     const root = shell();
     if (root) root.dataset.pendingScrollTarget = el.dataset.scrollTarget || el.dataset.shareTarget || "";
+  }
+
+  function swapTarget(event) {
+    return event.detail?.target || event.detail?.ctx?.target || event.target;
   }
 
   document.addEventListener("keydown", (event) => {
@@ -208,27 +198,30 @@
     const hxLink = event.target.closest("[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]");
     if (hxLink) markPending(hxLink);
     if (event.target.closest("[data-close-search]")) modal("search", false);
+
+    const selected = event.target.closest("[data-select-block], [data-inline-hint-toggle], [data-solution-toggle]");
+    if (selected) selectBlock(selected.closest("[data-action-block]"));
+
     const share = event.target.closest("[data-share-target]:not([hx-get]):not([data-solution-toggle])");
     if (share) {
       const target = document.getElementById(share.dataset.shareTarget);
       if (target?.matches?.("[data-action-block]")) {
-	event.preventDefault();
-	selectBlock(target);
+        event.preventDefault();
+        selectBlock(target);
       }
     }
+
     const solutionButton = event.target.closest("[data-solution-toggle]");
     if (solutionButton) {
-      selectBlock(solutionButton.closest("[data-action-block]"));
       const slot = qs(solutionButton.dataset.solutionTarget);
       if (slot?.dataset.solutionLoaded === "true") {
-	event.preventDefault();
-	const hidden = slot.classList.toggle("hidden");
-	solutionButton.classList.toggle("open", !hidden);
-	updateSolutionToggle(solutionButton, !hidden);
+        event.preventDefault();
+        const hidden = slot.classList.toggle("hidden");
+        solutionButton.classList.toggle("open", !hidden);
+        updateSolutionToggle(solutionButton, !hidden);
       }
     }
-    const inline = event.target.closest("[data-inline-hint-toggle]");
-    if (inline) return event.preventDefault(), selectBlock(inline.closest("[data-action-block]")), fetchInline(inline);
+
     const copy = event.target.closest("[data-copy]");
     if (!copy) return;
     const code = copy.closest(".code-shell")?.querySelector("[data-code]")?.dataset.code;
@@ -244,29 +237,27 @@
     if (form) updateQuiz(form);
   });
 
-  document.body.addEventListener("htmx:afterSwap", (event) => {
-    if (event.detail.target.tagName === "BODY") applySidebar();
-    if (event.detail.target.matches("[data-search-results]")) return selectSearch(0);
-    if (event.detail.target.classList.contains("solution-slot")) {
-      const slot = event.detail.target, button = qs(`[data-solution-target="#${CSS.escape(slot.id)}"]`);
+  document.body.addEventListener("htmx:after:swap", (event) => {
+    const target = swapTarget(event);
+    if (target?.tagName === "BODY") applySidebar();
+    if (target?.matches?.("[data-search-results]")) return selectSearch(0);
+    if (target?.classList?.contains("solution-slot")) {
+      const slot = target, button = qs(`[data-solution-target="#${CSS.escape(slot.id)}"]`);
       slot.dataset.solutionLoaded = "true";
       slot.classList.remove("hidden");
       button?.classList.add("open");
       updateSolutionToggle(button, true);
     }
-    const content = event.detail.target.id === "content" ? event.detail.target : null;
-    if (content) {
-      const section = qs("[data-section]", content)?.dataset.section;
-      setActiveSection(section);
-    }
     qsa("[data-quiz-card]").forEach(updateQuiz);
-  });
-
-  document.body.addEventListener("htmx:afterSettle", (event) => {
-    if (event.detail.target.id !== "content") return;
-    const target = document.getElementById(shell()?.dataset.pendingScrollTarget || "") || qs("[data-section]", event.detail.target);
-    delete shell()?.dataset.pendingScrollTarget;
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target?.id === "content") {
+      setTimeout(() => {
+        const root = shell();
+        const pending = root?.dataset.pendingScrollTarget || "";
+        const scrollTarget = document.getElementById(pending) || qs("[data-section]", target);
+        if (root) delete root.dataset.pendingScrollTarget;
+        scrollTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
   });
 
   document.body.addEventListener("labbitThemeChanged", (event) => {
@@ -276,7 +267,6 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     applySidebar();
-    setActiveSection(qs("[data-section]")?.dataset.section || "overview");
     qsa("[data-quiz-card]").forEach(updateQuiz);
     qs("[data-action-block].selected")?.scrollIntoView({ block: "start" });
   });

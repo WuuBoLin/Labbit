@@ -2,6 +2,9 @@ package web
 
 import (
 	"fmt"
+	"html"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,6 +31,10 @@ func sectionBlockPath(doc *labbit.Document, sectionType, section, block string) 
 
 func solutionPath(doc *labbit.Document, taskID string) templpkg.SafeURL {
 	return templpkg.URL(fmt.Sprintf("%s/keys/labs/%s", viewerPath(doc), taskID))
+}
+
+func inlineHintPath(doc *labbit.Document, taskID, hintID string) string {
+	return fmt.Sprintf("%s/keys/labs/%s/%s", viewerPath(doc), url.PathEscape(taskID), url.PathEscape(hintID))
 }
 
 func quizCheckPath(doc *labbit.Document, questionID string) templpkg.SafeURL {
@@ -59,11 +66,14 @@ func selectedClass(base, id, selected string) string {
 	return base
 }
 
-func selectedAttr(id, selected string) string {
-	if id == selected {
-		return "true"
+func navLinkClass(currentSection, id string) string {
+	if currentSection == "" {
+		currentSection = "overview"
 	}
-	return "false"
+	if currentSection == id {
+		return "nav-link active"
+	}
+	return "nav-link"
 }
 
 func optionChecked(id string, selected []string) bool {
@@ -149,6 +159,20 @@ func safeHTML(html string) templpkg.Component {
 	return templpkg.Raw(html)
 }
 
+var inlineHintButtonRE = regexp.MustCompile(`<button class="inline-hint-toggle" type="button" data-inline-hint-toggle data-task-id="([^"]+)" data-hint-id="([^"]+)" aria-label="Reveal inline hint">`)
+const inlineHintSwapAttr = ` hx-` + `swap="outerHTML"`
+
+func taskPromptHTML(doc *labbit.Document, prompt string) string {
+	return inlineHintButtonRE.ReplaceAllStringFunc(prompt, func(button string) string {
+		match := inlineHintButtonRE.FindStringSubmatch(button)
+		if len(match) != 3 {
+			return button
+		}
+		taskID, hintID := html.UnescapeString(match[1]), html.UnescapeString(match[2])
+		return `<button class="inline-hint-toggle" type="button" data-inline-hint-toggle data-task-id="` + match[1] + `" data-hint-id="` + match[2] + `" aria-label="Reveal inline hint" hx-get="` + html.EscapeString(inlineHintPath(doc, taskID, hintID)) + `"` + inlineHintSwapAttr + ` hx-trigger="click once">`
+	})
+}
+
 func accentStyle(doc *labbit.Document) templpkg.SafeCSS {
 	accent := doc.Accent
 	if accent == "" {
@@ -176,6 +200,34 @@ func themeLabel(theme string) string {
 		return "Switch to dark mode"
 	}
 	return "Switch to light mode"
+}
+
+templ DocumentNav(doc *labbit.Document, currentSection string, oob bool) {
+	if oob {
+		<nav id="document-nav" class="nav-list" aria-label="Document" hx-swap-oob="outerHTML">
+			@DocumentNavLinks(doc, currentSection)
+		</nav>
+	} else {
+		<nav id="document-nav" class="nav-list" aria-label="Document">
+			@DocumentNavLinks(doc, currentSection)
+		</nav>
+	}
+}
+
+templ DocumentNavLinks(doc *labbit.Document, currentSection string) {
+	<a class={ navLinkClass(currentSection, "overview") } data-section-id="overview" data-section-type="labs" data-scroll-target="overview" href={ viewerPath(doc) } hx-get={ sectionPath(doc, "labs", "overview") } hx-target="#content" hx-swap="innerHTML" hx-push-url={ viewerPath(doc) }>Overview</a>
+	if len(doc.Topics) > 0 {
+		<p class="nav-heading">Labs</p>
+		for _, topic := range doc.Topics {
+			<a class={ navLinkClass(currentSection, topic.ID) } data-section-id={ topic.ID } data-section-type="labs" data-scroll-target={ topic.ID } href={ sectionPath(doc, "labs", topic.ID) } hx-get={ sectionPath(doc, "labs", topic.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionPath(doc, "labs", topic.ID) }>{ topic.Title }</a>
+		}
+	}
+	if len(doc.Questions) > 0 {
+		<p class="nav-heading">Quiz</p>
+		for _, topic := range quizTopics(doc.Questions) {
+			<a class={ navLinkClass(currentSection, topic.ID) } data-section-id={ topic.ID } data-section-type="quiz" data-scroll-target={ topic.ID } href={ sectionPath(doc, "quiz", topic.ID) } hx-get={ sectionPath(doc, "quiz", topic.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionPath(doc, "quiz", topic.ID) }>{ topic.Title }</a>
+		}
+	}
 }
 
 templ UploadPage(errorMessage string, theme string) {
@@ -260,21 +312,7 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
 					</button>
 				</div>
 				<button class="search-trigger" type="button" data-open-search>Search <kbd>Ctrl K</kbd></button>
-				<nav class="nav-list" aria-label="Document">
-					<a class="nav-link" data-section-id="overview" data-section-type="labs" data-scroll-target="overview" href={ viewerPath(doc) } hx-get={ sectionPath(doc, "labs", "overview") } hx-target="#content" hx-swap="innerHTML" hx-push-url={ viewerPath(doc) }>Overview</a>
-					if len(doc.Topics) > 0 {
-						<p class="nav-heading">Labs</p>
-						for _, topic := range doc.Topics {
-							<a class="nav-link" data-section-id={ topic.ID } data-section-type="labs" data-scroll-target={ topic.ID } href={ sectionPath(doc, "labs", topic.ID) } hx-get={ sectionPath(doc, "labs", topic.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionPath(doc, "labs", topic.ID) }>{ topic.Title }</a>
-						}
-					}
-					if len(doc.Questions) > 0 {
-						<p class="nav-heading">Quiz</p>
-						for _, topic := range quizTopics(doc.Questions) {
-							<a class="nav-link" data-section-id={ topic.ID } data-section-type="quiz" data-scroll-target={ topic.ID } href={ sectionPath(doc, "quiz", topic.ID) } hx-get={ sectionPath(doc, "quiz", topic.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionPath(doc, "quiz", topic.ID) }>{ topic.Title }</a>
-						}
-					}
-				</nav>
+				@DocumentNav(doc, currentSection, false)
 			</div>
 			<div class="sidebar-bottom">
 				@ThemeToggle(theme)
@@ -288,7 +326,7 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
 		</section>
 		<div class="search-modal hidden" data-search-modal>
 			<div class="search-box">
-				<input data-search-input type="search" placeholder="Search this lab" hx-get={ searchPath(doc) } hx-target="[data-search-results]" hx-trigger="keyup changed delay:120ms, search" hx-sync="this:replace" hx-include="this" name="q" autocomplete="off"/>
+				<input data-search-input type="search" placeholder="Search this lab" hx-get={ searchPath(doc) } hx-target="[data-search-results]" hx-trigger="input changed delay:120ms, search" hx-sync="this:replace" hx-include="this" name="q" autocomplete="off"/>
 				<div data-search-results class="search-results"></div>
 			</div>
 		</div>
@@ -330,6 +368,11 @@ templ SectionContent(doc *labbit.Document, section string, selectedBlock string)
 	}
 }
 
+templ SectionFragment(doc *labbit.Document, section string, selectedBlock string) {
+	@SectionContent(doc, section, selectedBlock)
+	@DocumentNav(doc, section, true)
+}
+
 templ OverviewSection(doc *labbit.Document) {
 	<article id="overview" data-section="overview" data-section-type="labs" data-nav-block>
 		<p class="eyebrow">Overview</p>
@@ -346,14 +389,14 @@ templ LabTopicSection(doc *labbit.Document, topic labbit.Topic, selectedBlock st
 		<h1><a class="share-title" href={ sectionPath(doc, "labs", topic.ID) } data-share-target={ topic.ID } hx-get={ sectionPath(doc, "labs", topic.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionPath(doc, "labs", topic.ID) }>{ topic.Title }</a></h1>
 		<div class="task-list">
 			for i, task := range topic.Items {
-				<section class={ selectedClass("task-card", task.ID, selectedBlock) } id={ task.ID } data-nav-block data-action-block data-selected={ selectedAttr(task.ID, selectedBlock) }>
+				<section class={ selectedClass("task-card", task.ID, selectedBlock) } id={ task.ID } data-nav-block data-action-block data-block-url={ string(sectionBlockPath(doc, "labs", topic.ID, task.ID)) }>
 					<div class="task-head">
 						<div class="task-title">
-							<a class="share-number" href={ sectionBlockPath(doc, "labs", topic.ID, task.ID) } data-share-target={ task.ID }>{ fmt.Sprintf("%02d", i+1) }</a>
+							<a class="share-number" href={ sectionBlockPath(doc, "labs", topic.ID, task.ID) } data-block-link data-share-target={ task.ID } hx-get={ sectionBlockPath(doc, "labs", topic.ID, task.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionBlockPath(doc, "labs", topic.ID, task.ID) }>{ fmt.Sprintf("%02d", i+1) }</a>
 							<h2>{ task.Title }</h2>
 						</div>
 						if task.SolutionCount > 0 {
-							<button class="solution-toggle" type="button" data-solution-toggle data-solution-target={ "#solution-" + task.ID } data-share-target={ task.ID } data-tooltip="Show Solution" hx-get={ solutionPath(doc, task.ID) } hx-target={ "#solution-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" hx-disabled-elt="this" aria-label="Show Solution" aria-expanded="false" aria-pressed="false">
+							<button class="solution-toggle" type="button" data-solution-toggle data-solution-target={ "#solution-" + task.ID } data-select-block data-share-target={ task.ID } data-tooltip="Show Solution" hx-get={ solutionPath(doc, task.ID) } hx-target={ "#solution-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" aria-label="Show Solution" aria-expanded="false" aria-pressed="false">
 								<svg viewBox="0 0 24 24" aria-hidden="true">
 									<path d="M9 21h6"></path>
 									<path d="M10 17h4"></path>
@@ -363,7 +406,7 @@ templ LabTopicSection(doc *labbit.Document, topic labbit.Topic, selectedBlock st
 						}
 					</div>
 					<div class="prose-dark">
-						@safeHTML(task.Prompt)
+						@safeHTML(taskPromptHTML(doc, task.Prompt))
 					</div>
 					if task.SolutionCount > 0 {
 						<div id={ "solution-" + task.ID } class="solution-slot hidden" data-solution-loaded="false"></div>
@@ -387,33 +430,35 @@ templ QuizTopicSection(doc *labbit.Document, topic labbit.Topic, selectedBlock s
 }
 
 templ QuizCard(doc *labbit.Document, section string, q labbit.Question, number string, selectedBlock string, selectedIDs []string, correctIDs []string, correct bool, showResult bool) {
-	<form class={ selectedClass("quiz-card", q.ID, selectedBlock) } id={ q.ID } data-quiz-card hx-post={ quizCheckPath(doc, q.ID) } hx-target="this" hx-swap="outerHTML" data-nav-block data-action-block data-selected={ selectedAttr(q.ID, selectedBlock) }>
-		<input type="hidden" name="_section" value={ section }/>
-		<input type="hidden" name="_number" value={ number }/>
+	<section class={ selectedClass("quiz-card", q.ID, selectedBlock) } id={ q.ID } data-quiz-card data-nav-block data-action-block data-block-url={ string(sectionBlockPath(doc, "quiz", section, q.ID)) }>
 		<div class="question-head">
-			<a class="share-number" href={ sectionBlockPath(doc, "quiz", section, q.ID) } data-share-target={ q.ID }>{ number }</a>
+			<a class="share-number" href={ sectionBlockPath(doc, "quiz", section, q.ID) } data-block-link data-share-target={ q.ID } hx-get={ sectionBlockPath(doc, "quiz", section, q.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionBlockPath(doc, "quiz", section, q.ID) }>{ number }</a>
 			<span>{ q.Kind }</span>
 		</div>
 		<div class="prose-dark question-prompt">
 			@safeHTML(q.Prompt)
 		</div>
-		<div class="options">
-			for _, opt := range q.Options {
-				<label class={ optionClass(opt, selectedIDs, showResult) }>
-					<input type="hidden" name="_order" value={ opt.ID }/>
-					<input type={ questionInputType(q.Kind) } name="option" value={ opt.ID } checked?={ optionChecked(opt.ID, selectedIDs) } disabled?={ showResult } data-quiz-option/>
-					<span>{ opt.Label }</span>
-				</label>
-			}
-		</div>
-		<div class="quiz-action">
-			if showResult {
-				@QuizResultFragment(correct, q.Explanation, optionLabels(q.Options, correctIDs))
-			} else {
-				<button class="secondary-btn" type="submit" data-quiz-submit disabled>Check answer</button>
-			}
-		</div>
-	</form>
+		<form hx-post={ quizCheckPath(doc, q.ID) } hx-target="closest [data-action-block]" hx-swap="outerHTML">
+			<input type="hidden" name="_section" value={ section }/>
+			<input type="hidden" name="_number" value={ number }/>
+			<div class="options">
+				for _, opt := range q.Options {
+					<label class={ optionClass(opt, selectedIDs, showResult) }>
+						<input type="hidden" name="_order" value={ opt.ID }/>
+						<input type={ questionInputType(q.Kind) } name="option" value={ opt.ID } checked?={ optionChecked(opt.ID, selectedIDs) } disabled?={ showResult } data-quiz-option/>
+						<span>{ opt.Label }</span>
+					</label>
+				}
+			</div>
+			<div class="quiz-action">
+				if showResult {
+					@QuizResultFragment(correct, q.Explanation, optionLabels(q.Options, correctIDs))
+				} else {
+					<button class="secondary-btn" type="submit" data-quiz-submit disabled>Check answer</button>
+				}
+			</div>
+		</form>
+	</section>
 }
 
 templ SolutionFragment(task labbit.Task) {

@@ -196,19 +196,19 @@ func (s *Server) themeHandler(c echo.Context) error {
 
 func renderSection(c echo.Context, doc *labbit.Document, sectionType, section, selectedBlock string) error {
 	if sectionType == "labs" && section == "overview" {
-		return render(c, http.StatusOK, web.OverviewSection(doc))
+		return render(c, http.StatusOK, web.SectionFragment(doc, "overview", selectedBlock))
 	}
 	switch sectionType {
 	case "labs":
 		for _, topic := range doc.Topics {
 			if topic.ID == section {
-				return render(c, http.StatusOK, web.LabTopicSection(doc, topic, selectedBlock))
+				return render(c, http.StatusOK, web.SectionFragment(doc, section, selectedBlock))
 			}
 		}
 	case "quiz":
 		for _, topic := range quizTopics(doc.Questions) {
 			if topic.ID == section {
-				return render(c, http.StatusOK, web.QuizTopicSection(doc, topic, selectedBlock))
+				return render(c, http.StatusOK, web.SectionFragment(doc, section, selectedBlock))
 			}
 		}
 	}
