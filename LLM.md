@@ -101,15 +101,15 @@ Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option
 
 `<task id="..." title="...">`
 
-- Contains the visible learner prompt plus optional hidden answer content.
+- Contains the visible learner prompt plus optional hidden hint or solution content.
 - The visible prompt must describe the task, requirements, constraints, expected result, and starter material.
 - Do not put solution-only commands, final config, or exact completed files directly in the visible prompt.
 
 `<hint title="...">`
 
-- Hidden inline answer content.
+- Hidden inline hint content.
 - Appears at the exact location of the tag when revealed.
-- Use for answer chunks that naturally belong between visible requirements or steps.
+- Use for hint chunks that naturally belong between visible requirements or steps.
 - Content should read like normal prose/code when revealed, not like quiz feedback.
 - May contain anything, including Markdown, lists, commands, configuration snippets, fenced code blocks, and explanations.
 
@@ -118,13 +118,12 @@ Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option
 - Hidden separated full solution.
 - Use when a complete final procedure or final explanation should be shown as one block.
 - A task may use `<hint>`, `<solution>`, both, or neither.
-- If both are used, `<hint>` blocks should be short inline answer chunks and `<solution>` should be the complete final procedure.
-- Legacy `<answer>` is accepted as an alias, but new files must use `<solution>`.
+- If both are used, `<hint>` blocks should be short inline hint chunks and `<solution>` should be the complete final procedure.
 
 `<collapse title="...">`
 
 - Visible collapsible reference content.
-- Use for optional background, examples, command output, tables, or supporting details that are not hidden answers.
+- Use for optional background, examples, command output, tables, or supporting details that are not hidden hints or solutions.
 - This is not a hint: do not use it for solution-only material that should stay hidden until requested.
 - The body may contain normal supported Markdown.
 
@@ -167,13 +166,13 @@ Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option
 - Write concrete, verifiable tasks.
 - Prefer imperative task titles: “Configure a static IP address”, “Create a Samba share”.
 - Keep visible prompts challenge-focused.
-- Put hidden inline answer chunks in `<hint>`.
+- Put hidden inline hint chunks in `<hint>`.
 - Put complete final procedures in `<solution>`.
 - Do not write vague hidden content such as “configure it correctly”.
 - Include exact commands, paths, file contents, verification steps, and short explanations when they are needed.
 - If a command or config is the expected answer, hide it unless it is intentionally starter material.
 
-Good inline answer:
+Good inline hint:
 
 ````xml
 <hint title="Inventory pattern"><![CDATA[

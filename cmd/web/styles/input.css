@@ -425,43 +425,43 @@
     @apply text-xl font-semibold text-zinc-50;
   }
 
-  .hint-toggle {
+  .solution-toggle {
     @apply relative flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-sm text-zinc-300 transition;
   }
 
-  .hint-toggle svg {
+  .solution-toggle svg {
     @apply h-4 w-4 fill-none stroke-current stroke-2;
   }
 
-  .hint-toggle::after {
+  .solution-toggle::after {
     @apply pointer-events-none absolute right-0 top-full z-20 mt-2 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-200 opacity-0 shadow-xl shadow-black/40 transition-opacity;
     content: attr(data-tooltip);
   }
 
-  .hint-toggle:hover::after,
-  .hint-toggle:focus-visible::after {
+  .solution-toggle:hover::after,
+  .solution-toggle:focus-visible::after {
     @apply opacity-100;
   }
 
-  .hint-toggle:hover,
-  .hint-toggle.open {
+  .solution-toggle:hover,
+  .solution-toggle.open {
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  .hint-toggle.open {
+  .solution-toggle.open {
     background: rgb(var(--accent-rgb) / 0.1);
   }
 
-  .hint-toggle:disabled {
+  .solution-toggle:disabled {
     @apply cursor-wait border-zinc-800 text-zinc-600;
   }
 
-  .hint-toggle.loading {
+  .solution-toggle.loading {
     @apply animate-pulse;
   }
 
-  .hint-slot {
+  .solution-slot {
     @apply mt-5;
   }
 
@@ -477,24 +477,24 @@
     @apply mt-3 space-y-5;
   }
 
-  .inline-answer-toggle {
+  .inline-hint-toggle {
     @apply my-3 inline-flex items-center rounded border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-sm text-zinc-300 transition;
   }
 
-  .inline-answer-toggle:hover {
+  .inline-hint-toggle:hover {
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  .inline-answer-toggle:disabled {
+  .inline-hint-toggle:disabled {
     @apply cursor-wait border-zinc-800 text-zinc-600;
   }
 
-  .inline-answer-toggle.loading {
+  .inline-hint-toggle.loading {
     @apply animate-pulse;
   }
 
-  .inline-answer {
+  .inline-hint {
     @apply my-3;
   }
 
@@ -682,8 +682,8 @@
   .secondary-btn,
   .icon-btn,
   .search-trigger,
-  .inline-answer-toggle,
-  .hint-toggle,
+  .inline-hint-toggle,
+  .solution-toggle,
   .copy-btn,
   .keybinding-grid kbd {
     background: var(--control-bg);
@@ -694,8 +694,8 @@
   .secondary-btn:hover,
   .icon-btn:hover,
   .search-trigger:hover,
-  .inline-answer-toggle:hover,
-  .hint-toggle:hover,
+  .inline-hint-toggle:hover,
+  .solution-toggle:hover,
   .copy-btn:hover {
     border-color: var(--accent);
     color: var(--accent);
@@ -898,15 +898,15 @@
     background: var(--code-bg) !important;
   }
 
-  .hint-toggle::after {
+  .solution-toggle::after {
     background: var(--panel-solid);
     border-color: var(--border-main);
     box-shadow: 0 1rem 2rem var(--shadow-color);
     color: var(--text-main);
   }
 
-  .hint-toggle:disabled,
-  .inline-answer-toggle:disabled,
+  .solution-toggle:disabled,
+  .inline-hint-toggle:disabled,
   .secondary-btn:disabled {
     border-color: var(--border-muted);
     color: var(--text-faint);

@@ -8,12 +8,12 @@
   const shell = () => qs(".labbit-shell");
   const searchItems = () => qsa("[data-search-result]");
   const searchOpen = () => !qs("[data-search-modal]")?.classList.contains("hidden");
-  const viewerRoot = () => location.pathname.replace(/\/section\/.*$/, "").replace(/\/$/, "");
+  const viewerRoot = () => location.pathname.replace(/\/(?:labs|quiz)\/.*$/, "").replace(/\/$/, "");
   const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
   const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
   function sectionURL(section, block = "") {
     if (!section || section === "overview") return viewerRoot();
-    const url = `${viewerRoot()}/section/${encodeURIComponent(section)}`;
+    const url = `${viewerRoot()}/${sectionTypeFor(section)}/${encodeURIComponent(section)}`;
     return block && block !== section ? `${url}?block=${encodeURIComponent(block)}` : url;
   }
   function modal(name, open) {
@@ -50,8 +50,13 @@
     if (!id) return;
     const root = shell();
     if (root) root.dataset.currentSection = id;
-    qsa("[data-section-id]").forEach((el) => el.classList.toggle("active", el.dataset.sectionId === id));
+    qsa("[data-section-id]").forEach((el) => {
+      const active = el.dataset.sectionId === id;
+      el.classList.toggle("active", active);
+      if (active && root) root.dataset.currentSectionType = el.dataset.sectionType || "labs";
+    });
   }
+  const sectionTypeFor = (section) => qs(`[data-section-id="${CSS.escape(section)}"]`)?.dataset.sectionType || shell()?.dataset.currentSectionType || "labs";
   const sectionFor = (el) => el?.closest?.("[data-section]")?.dataset.section || shell()?.dataset.currentSection || "overview";
   function selectBlock(block, push = true, scroll = false) {
     if (!block) return;
@@ -91,9 +96,9 @@
   function actOnBlock() {
     const items = blocks(), block = qs("[data-action-block].selected") || items[currentBlockIndex(items)];
     if (!block) return;
-    const hint = qs("[data-hint-toggle]", block);
-    if (hint) return hint.click();
-    const inline = qs("[data-inline-answer-toggle]", block), quiz = qs("[data-quiz-submit]:not(:disabled)", block);
+    const solutionButton = qs("[data-solution-toggle]", block);
+    if (solutionButton) return solutionButton.click();
+    const inline = qs("[data-inline-hint-toggle]", block), quiz = qs("[data-quiz-submit]:not(:disabled)", block);
     (inline || quiz)?.click();
   }
 
@@ -102,7 +107,7 @@
     if (button) button.disabled = !qsa("[data-quiz-option]", form).some((el) => el.checked);
   }
 
-  function updateHintToggle(button, open) {
+  function updateSolutionToggle(button, open) {
     if (!button) return;
     const label = open ? "Hide Solution" : "Show Solution";
     button.dataset.tooltip = label;
@@ -162,7 +167,7 @@
     if (!task || !hint || button.disabled || !window.htmx) return;
     button.disabled = true;
     button.classList.add("loading");
-    window.htmx.ajax("GET", `${viewerRoot()}/hints/${encodeURIComponent(task)}/${encodeURIComponent(hint)}`, {
+    window.htmx.ajax("GET", `${viewerRoot()}/keys/labs/${encodeURIComponent(task)}/${encodeURIComponent(hint)}`, {
       target: button,
       swap: "outerHTML",
     });
@@ -203,7 +208,7 @@
     const hxLink = event.target.closest("[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]");
     if (hxLink) markPending(hxLink);
     if (event.target.closest("[data-close-search]")) modal("search", false);
-    const share = event.target.closest("[data-share-target]:not([hx-get]):not([data-hint-toggle])");
+    const share = event.target.closest("[data-share-target]:not([hx-get]):not([data-solution-toggle])");
     if (share) {
       const target = document.getElementById(share.dataset.shareTarget);
       if (target?.matches?.("[data-action-block]")) {
@@ -211,18 +216,18 @@
 	selectBlock(target);
       }
     }
-    const hint = event.target.closest("[data-hint-toggle]");
-    if (hint) {
-      selectBlock(hint.closest("[data-action-block]"));
-      const slot = qs(hint.dataset.hintTarget);
-      if (slot?.dataset.hintLoaded === "true") {
+    const solutionButton = event.target.closest("[data-solution-toggle]");
+    if (solutionButton) {
+      selectBlock(solutionButton.closest("[data-action-block]"));
+      const slot = qs(solutionButton.dataset.solutionTarget);
+      if (slot?.dataset.solutionLoaded === "true") {
 	event.preventDefault();
 	const hidden = slot.classList.toggle("hidden");
-	hint.classList.toggle("open", !hidden);
-	updateHintToggle(hint, !hidden);
+	solutionButton.classList.toggle("open", !hidden);
+	updateSolutionToggle(solutionButton, !hidden);
       }
     }
-    const inline = event.target.closest("[data-inline-answer-toggle]");
+    const inline = event.target.closest("[data-inline-hint-toggle]");
     if (inline) return event.preventDefault(), selectBlock(inline.closest("[data-action-block]")), fetchInline(inline);
     const copy = event.target.closest("[data-copy]");
     if (!copy) return;
@@ -242,12 +247,12 @@
   document.body.addEventListener("htmx:afterSwap", (event) => {
     if (event.detail.target.tagName === "BODY") applySidebar();
     if (event.detail.target.matches("[data-search-results]")) return selectSearch(0);
-    if (event.detail.target.classList.contains("hint-slot")) {
-      const slot = event.detail.target, button = qs(`[data-hint-target="#${CSS.escape(slot.id)}"]`);
-      slot.dataset.hintLoaded = "true";
+    if (event.detail.target.classList.contains("solution-slot")) {
+      const slot = event.detail.target, button = qs(`[data-solution-target="#${CSS.escape(slot.id)}"]`);
+      slot.dataset.solutionLoaded = "true";
       slot.classList.remove("hidden");
       button?.classList.add("open");
-      updateHintToggle(button, true);
+      updateSolutionToggle(button, true);
     }
     const content = event.detail.target.id === "content" ? event.detail.target : null;
     if (content) {

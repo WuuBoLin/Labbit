@@ -37,7 +37,6 @@ type rawTask struct {
 	Title    string    `xml:"title,attr"`
 	Hints    []rawHint `xml:"hint"`
 	Solution rawText   `xml:"solution"`
-	Answer   rawText   `xml:"answer"`
 	Inner    string    `xml:",innerxml"`
 }
 
@@ -107,6 +106,9 @@ func Parse(r io.Reader) (*Document, error) {
 			Title: fallback(topic.Title, fmt.Sprintf("Lab Topic %d", i+1)),
 		}
 		for j, task := range topic.Tasks {
+			if hasElement(task.Inner, "answer") {
+				return nil, errors.New("answer tag is no longer supported; use solution")
+			}
 			taskID := stableID(task.ID, task.Title, fmt.Sprintf("%s-task-%d", t.ID, j+1))
 			inlineHints := parseInlineHints(taskID, task.Hints)
 			prompt := taskPrompt(task.Inner, taskID, inlineHints)
@@ -117,19 +119,15 @@ func Parse(r io.Reader) (*Document, error) {
 			}
 			item.Hints = append(item.Hints, inlineHints...)
 			solution := componentMarkdown(task.Solution.Inner)
-			if solution == "" {
-				solution = componentMarkdown(task.Answer.Inner)
-			}
 			if solution != "" {
 				rendered := RenderMarkdown(solution)
-				item.Answer = rendered
 				item.Hints = append(item.Hints, Hint{
 					ID:    fmt.Sprintf("%s-solution", taskID),
 					Kind:  "solution",
 					Title: "Solution",
 					Body:  rendered,
 				})
-				item.AnswerCount = 1
+				item.SolutionCount = 1
 			}
 			item.HintCount = len(item.Hints)
 			t.Items = append(t.Items, item)
@@ -163,6 +161,19 @@ func Parse(r io.Reader) (*Document, error) {
 	return doc, nil
 }
 
+func hasElement(inner, name string) bool {
+	decoder := xml.NewDecoder(strings.NewReader("<root>" + inner + "</root>"))
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		if start, ok := tok.(xml.StartElement); ok && start.Name.Local == name {
+			return true
+		}
+	}
+}
+
 func normalizeAccent(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || strings.EqualFold(value, "DEFAULT") {
@@ -184,7 +195,7 @@ func parseInlineHints(taskID string, hints []rawHint) []Hint {
 		out = append(out, Hint{
 			ID:    stableID(hint.ID, hint.Title, fmt.Sprintf("%s-hint-%d", taskID, k+1)),
 			Kind:  "hint",
-			Title: fallback(hint.Title, "Inline answer"),
+			Title: fallback(hint.Title, "Inline hint"),
 			Body:  RenderMarkdown(body),
 		})
 	}
@@ -263,9 +274,9 @@ func taskPrompt(inner, taskID string, inlineHints []Hint) string {
 
 func inlineHintPlaceholder(taskID, hintID, title string) string {
 	if strings.TrimSpace(title) == "" {
-		title = "Reveal inline answer"
+		title = "Reveal inline hint"
 	}
-	return `<button class="inline-answer-toggle" type="button" data-inline-answer-toggle data-task-id="` + html.EscapeString(taskID) + `" data-hint-id="` + html.EscapeString(hintID) + `" aria-label="Reveal inline answer">` + html.EscapeString(title) + `</button>`
+	return `<button class="inline-hint-toggle" type="button" data-inline-hint-toggle data-task-id="` + html.EscapeString(taskID) + `" data-hint-id="` + html.EscapeString(hintID) + `" aria-label="Reveal inline hint">` + html.EscapeString(title) + `</button>`
 }
 
 func componentMarkdown(s string) string {

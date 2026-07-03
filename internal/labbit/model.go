@@ -26,13 +26,12 @@ type Topic struct {
 }
 
 type Task struct {
-	ID          string
-	Title       string
-	Prompt      string
-	Answer      string
-	Hints       []Hint
-	HintCount   int
-	AnswerCount int
+	ID            string
+	Title         string
+	Prompt        string
+	Hints         []Hint
+	HintCount     int
+	SolutionCount int
 }
 
 type Hint struct {

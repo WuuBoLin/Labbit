@@ -36,13 +36,13 @@ func TestDocUIDRedirect(t *testing.T) {
 		t.Fatalf("SaveDocument() error = %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/docs/c40a39f", nil)
+	req := httptest.NewRequest(http.MethodGet, docRoute("c40a39f"), nil)
 	resp := httptest.NewRecorder()
 	(&Server{labs: store}).RegisterRoutes().ServeHTTP(resp, req)
 	if resp.Code != http.StatusMovedPermanently {
 		t.Fatalf("status = %d", resp.Code)
 	}
-	if got, want := resp.Header().Get("Location"), "/docs/c40a39f/linux-services"; got != want {
+	if got, want := resp.Header().Get("Location"), docRoute("c40a39f", "linux-services"); got != want {
 		t.Fatalf("Location = %q, want %q", got, want)
 	}
 }
@@ -64,6 +64,69 @@ func TestStaticCacheHeaders(t *testing.T) {
 	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
 		t.Fatalf("HTMX Cache-Control = %q", got)
 	}
+}
+
+func TestDocumentRoutesUseTypedSectionsAndKeys(t *testing.T) {
+	store, err := labbit.NewMemoryStore()
+	if err != nil {
+		t.Fatalf("NewMemoryStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	doc, err := labbit.Parse(strings.NewReader(labbitSample()))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	doc.UID = "c40a39f"
+	doc.Hash = "route-sample"
+	if err := store.SaveDocument(context.Background(), doc); err != nil {
+		t.Fatalf("SaveDocument() error = %v", err)
+	}
+	handler := (&Server{labs: store}).RegisterRoutes()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		status int
+	}{
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "labs", "samba"), http.StatusOK},
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "quiz", "basics"), http.StatusOK},
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "keys", "labs", "setup-samba"), http.StatusOK},
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "keys", "setup-samba"), http.StatusNotFound},
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "answers", "setup-samba"), http.StatusNotFound},
+		{http.MethodGet, docRoute("c40a39f", "linux-services", "section", "samba"), http.StatusNotFound},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		if resp.Code != tc.status {
+			t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.Code, tc.status)
+		}
+	}
+}
+
+func labbitSample() string {
+	return `<labbit title="Linux Services Exam" slug="linux-services">
+<overview>Overview</overview>
+<lab>
+  <topic id="samba" title="Samba">
+    <task id="setup-samba" title="Setup Samba">
+Install packages.
+<hint title="Package">Use the Samba package.</hint>
+<solution>dnf install samba</solution>
+    </task>
+  </topic>
+</lab>
+<quiz>
+  <topic id="basics" title="Basics">
+    <question id="daemon" type="single">
+      <prompt>Which service handles SMB file sharing?</prompt>
+      <option id="a" correct="true">smb</option>
+      <option id="b">sshd</option>
+      <explanation>smb provides SMB file shares.</explanation>
+    </question>
+  </topic>
+</quiz>
+</labbit>`
 }
 
 func TestUploadPageUsesThemeCookie(t *testing.T) {
@@ -94,7 +157,7 @@ func TestUploadPageDefaultsInvalidThemeCookieToDark(t *testing.T) {
 
 func TestThemeHandlerSetsCookieAndReturnsToggle(t *testing.T) {
 	form := url.Values{"theme": {"light"}}
-	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/i/theme", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	resp := httptest.NewRecorder()
@@ -123,7 +186,7 @@ func TestThemeHandlerSetsCookieAndReturnsToggle(t *testing.T) {
 
 func TestThemeHandlerDefaultsInvalidThemeToDark(t *testing.T) {
 	form := url.Values{"theme": {"sepia"}}
-	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/i/theme", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp := httptest.NewRecorder()
 	(&Server{}).RegisterRoutes().ServeHTTP(resp, req)

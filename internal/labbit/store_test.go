@@ -31,17 +31,14 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDocument() error = %v", err)
 	}
-	if got.Topics[0].Items[0].Answer != "" {
-		t.Fatal("document load should not hydrate answers")
-	}
 	if len(got.Topics[0].Items[0].Hints) != 0 {
 		t.Fatal("document load should not hydrate hints")
 	}
 	if got.Topics[0].Items[0].HintCount != 2 {
 		t.Fatalf("hint count = %d", got.Topics[0].Items[0].HintCount)
 	}
-	if got.Topics[0].Items[0].AnswerCount != 1 {
-		t.Fatalf("answer count = %d", got.Topics[0].Items[0].AnswerCount)
+	if got.Topics[0].Items[0].SolutionCount != 1 {
+		t.Fatalf("solution count = %d", got.Topics[0].Items[0].SolutionCount)
 	}
 	if got.Accent != "#ff3366" {
 		t.Fatalf("accent = %q", got.Accent)
@@ -92,13 +89,6 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if len(solution.Hints) != 1 || solution.Hints[0].Kind != "solution" {
 		t.Fatalf("solution = %#v", solution.Hints)
-	}
-	answer, err := store.GetAnswer(context.Background(), got.ID, "setup-samba")
-	if err != nil {
-		t.Fatalf("GetAnswer() error = %v", err)
-	}
-	if !strings.Contains(answer.Answer, "dnf install samba") {
-		t.Fatalf("answer = %s", answer.Answer)
 	}
 	results, err := store.Search(context.Background(), got.ID, "samba")
 	if err != nil {

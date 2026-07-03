@@ -70,13 +70,13 @@ func TestParseDocument(t *testing.T) {
 	}
 	task := doc.Topics[0].Items[0]
 	if strings.Contains(task.Prompt, "dnf install") {
-		t.Fatal("prompt leaked answer")
+		t.Fatal("prompt leaked solution")
 	}
 	if strings.Contains(task.Prompt, "Samba package") {
-		t.Fatal("prompt leaked hint")
+		t.Fatal("prompt leaked inline hint")
 	}
-	if !strings.Contains(task.Prompt, "data-inline-answer-toggle") {
-		t.Fatalf("prompt did not include inline answer control: %s", task.Prompt)
+	if !strings.Contains(task.Prompt, "data-inline-hint-toggle") {
+		t.Fatalf("prompt did not include inline hint control: %s", task.Prompt)
 	}
 	if task.HintCount != 2 || len(task.Hints) != 2 {
 		t.Fatalf("hints = %#v", task.Hints)
@@ -87,14 +87,11 @@ func TestParseDocument(t *testing.T) {
 	if task.Hints[1].Kind != "solution" {
 		t.Fatalf("solution hint kind = %#v", task.Hints[1])
 	}
-	if task.AnswerCount != 1 {
-		t.Fatalf("answer count = %d", task.AnswerCount)
+	if !strings.Contains(task.Hints[1].Body, "dnf install samba") {
+		t.Fatalf("solution did not render code: %s", task.Hints[1].Body)
 	}
-	if !strings.Contains(task.Answer, "dnf install samba") {
-		t.Fatalf("answer did not render code: %s", task.Answer)
-	}
-	if !strings.Contains(task.Answer, "highlighted-code") {
-		t.Fatalf("answer did not render highlighted code: %s", task.Answer)
+	if !strings.Contains(task.Hints[1].Body, "highlighted-code") {
+		t.Fatalf("solution did not render highlighted code: %s", task.Hints[1].Body)
 	}
 	if len(doc.Questions) != 2 {
 		t.Fatalf("questions = %d", len(doc.Questions))
@@ -111,6 +108,23 @@ func TestParseDefaultAccent(t *testing.T) {
 	}
 	if doc.Accent != DefaultAccent {
 		t.Fatalf("accent = %q", doc.Accent)
+	}
+}
+
+func TestParseRejectsLegacyAnswerTag(t *testing.T) {
+	_, err := Parse(strings.NewReader(`<labbit title="Legacy Answer">
+<overview>Overview</overview>
+<lab>
+  <topic title="Topic">
+    <task title="Task">
+Visible prompt.
+<answer>Legacy hidden content.</answer>
+    </task>
+  </topic>
+</lab>
+</labbit>`))
+	if err == nil || !strings.Contains(err.Error(), "answer tag") {
+		t.Fatalf("expected legacy answer tag error, got %v", err)
 	}
 }
 
@@ -190,7 +204,7 @@ Read the reference.
 	if !strings.Contains(prompt, `<summary>Background</summary>`) {
 		t.Fatalf("task collapse was not rendered: %s", prompt)
 	}
-	if strings.Contains(prompt, "data-hint") || strings.Contains(prompt, "inline-answer") {
+	if strings.Contains(prompt, "data-hint") || strings.Contains(prompt, "inline-hint") {
 		t.Fatalf("collapse was confused with hint controls: %s", prompt)
 	}
 }

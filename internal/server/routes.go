@@ -23,6 +23,16 @@ import (
 	"labbit/internal/labbit"
 )
 
+const docsPrefix = "/docs"
+
+func docRoute(parts ...string) string {
+	return strings.Join(append([]string{docsPrefix}, parts...), "/")
+}
+
+func docPath(doc *labbit.Document) string {
+	return docRoute(doc.UID, doc.Slug)
+}
+
 func (s *Server) RegisterRoutes() http.Handler {
 	e := echo.New()
 	e.Use(middleware.Recover())
@@ -46,20 +56,19 @@ func (s *Server) RegisterRoutes() http.Handler {
 	e.GET("/apple-touch-icon.png", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/assets/img/icon-180.png")
 	})
-	e.POST("/theme", s.themeHandler)
-	e.POST("/upload", s.uploadHandler)
-	e.GET("/docs/:uid", s.docUIDRedirectHandler)
-	e.GET("/docs/:uid/:slug", s.viewerHandler)
-	e.GET("/docs/:uid/:slug/section/:section", s.sectionHandler)
-	e.GET("/docs/:uid/:slug/hints/:task/:hint", s.inlineHintHandler)
-	e.GET("/docs/:uid/:slug/hints/:task", s.hintHandler)
-	e.GET("/docs/:uid/:slug/answers/:task", s.hintHandler)
-	e.POST("/docs/:uid/:slug/quiz/:question/check", s.quizCheckHandler)
-	e.GET("/docs/:uid/:slug/search", s.searchHandler)
+	e.POST("/i/theme", s.themeHandler)
+	e.POST("/i/upload", s.uploadHandler)
+	e.GET(docRoute(":uid"), s.docUIDRedirectHandler)
+	e.GET(docRoute(":uid", ":slug"), s.viewerHandler)
+	e.GET(docRoute(":uid", ":slug", "search"), s.searchHandler)
+	e.GET(docRoute(":uid", ":slug", "keys", "labs", ":task", ":hint"), s.inlineHintHandler)
+	e.GET(docRoute(":uid", ":slug", "keys", "labs", ":task"), s.solutionHandler)
+	e.POST(docRoute(":uid", ":slug", "keys", "quiz", ":question", "check"), s.quizCheckHandler)
+	e.GET(docRoute(":uid", ":slug", ":type", ":section"), s.sectionHandler)
 
-	e.GET("/health", s.healthHandler)
+	e.GET("/_/healthz", s.healthHandler)
 
-	e.GET("/websocket", s.websocketHandler)
+	e.GET("/_/websocket", s.websocketHandler)
 
 	return e
 }
@@ -93,7 +102,7 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	hash := fileHash(body)
 	if existing, err := s.labs.GetDocumentByHash(c.Request().Context(), hash); err == nil {
 		slog.Info("duplicate lab upload reused", "uid", existing.UID, "slug", existing.Slug, "filename", file.Filename)
-		c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", existing.UID, existing.Slug))
+		c.Response().Header().Set("HX-Push-Url", docPath(existing))
 		return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
 	}
 
@@ -107,13 +116,13 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	if err := s.labs.SaveDocument(c.Request().Context(), doc); err != nil {
 		slog.Error("lab save failed", "uid", doc.UID, "slug", doc.Slug, "error", err)
 		if existing, lookupErr := s.labs.GetDocumentByHash(c.Request().Context(), hash); lookupErr == nil {
-			c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", existing.UID, existing.Slug))
+			c.Response().Header().Set("HX-Push-Url", docPath(existing))
 			return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
 		}
 		return s.renderUploadError(c, http.StatusInternalServerError, "The lab could not be saved.")
 	}
 	slog.Info("lab uploaded", "uid", doc.UID, "slug", doc.Slug, "title", doc.Title, "filename", file.Filename)
-	c.Response().Header().Set("HX-Push-Url", fmt.Sprintf("/docs/%s/%s", doc.UID, doc.Slug))
+	c.Response().Header().Set("HX-Push-Url", docPath(doc))
 	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c)))
 }
 
@@ -144,7 +153,7 @@ func (s *Server) docUIDRedirectHandler(c echo.Context) error {
 		slog.Warn("lab not found for uid redirect", "uid", c.Param("uid"))
 		return echo.NewHTTPError(http.StatusNotFound, "lab not found")
 	}
-	return c.Redirect(http.StatusMovedPermanently, fmt.Sprintf("/docs/%s/%s", doc.UID, doc.Slug))
+	return c.Redirect(http.StatusMovedPermanently, docPath(doc))
 }
 
 func (s *Server) viewerHandler(c echo.Context) error {
@@ -161,13 +170,14 @@ func (s *Server) sectionHandler(c echo.Context) error {
 		return err
 	}
 	section := c.Param("section")
+	sectionType := c.Param("type")
 	if c.Request().Header.Get("HX-Request") != "true" {
-		if !sectionExists(doc, section) {
+		if !sectionExists(doc, sectionType, section) {
 			return echo.NewHTTPError(http.StatusNotFound, "section not found")
 		}
 		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c)))
 	}
-	return renderSection(c, doc, section, c.QueryParam("block"))
+	return renderSection(c, doc, sectionType, section, c.QueryParam("block"))
 }
 
 func (s *Server) themeHandler(c echo.Context) error {
@@ -184,24 +194,28 @@ func (s *Server) themeHandler(c echo.Context) error {
 	return render(c, http.StatusOK, web.ThemeToggle(theme))
 }
 
-func renderSection(c echo.Context, doc *labbit.Document, section, selectedBlock string) error {
-	if section == "overview" {
+func renderSection(c echo.Context, doc *labbit.Document, sectionType, section, selectedBlock string) error {
+	if sectionType == "labs" && section == "overview" {
 		return render(c, http.StatusOK, web.OverviewSection(doc))
 	}
-	for _, topic := range doc.Topics {
-		if topic.ID == section {
-			return render(c, http.StatusOK, web.LabTopicSection(doc, topic, selectedBlock))
+	switch sectionType {
+	case "labs":
+		for _, topic := range doc.Topics {
+			if topic.ID == section {
+				return render(c, http.StatusOK, web.LabTopicSection(doc, topic, selectedBlock))
+			}
 		}
-	}
-	for _, topic := range quizTopics(doc.Questions) {
-		if topic.ID == section {
-			return render(c, http.StatusOK, web.QuizTopicSection(doc, topic, selectedBlock))
+	case "quiz":
+		for _, topic := range quizTopics(doc.Questions) {
+			if topic.ID == section {
+				return render(c, http.StatusOK, web.QuizTopicSection(doc, topic, selectedBlock))
+			}
 		}
 	}
 	return echo.NewHTTPError(http.StatusNotFound, "section not found")
 }
 
-func (s *Server) hintHandler(c echo.Context) error {
+func (s *Server) solutionHandler(c echo.Context) error {
 	doc, err := s.loadDocument(c)
 	if err != nil {
 		return err
@@ -222,10 +236,10 @@ func (s *Server) inlineHintHandler(c echo.Context) error {
 	}
 	hint, err := s.labs.GetHint(c.Request().Context(), doc.ID, c.Param("task"), c.Param("hint"))
 	if err != nil {
-		slog.Warn("inline answer not found", "uid", doc.UID, "task", c.Param("task"), "hint", c.Param("hint"))
-		return echo.NewHTTPError(http.StatusNotFound, "inline answer not found")
+		slog.Warn("inline hint not found", "uid", doc.UID, "task", c.Param("task"), "hint", c.Param("hint"))
+		return echo.NewHTTPError(http.StatusNotFound, "hint not found")
 	}
-	slog.Info("inline answer served", "uid", doc.UID, "task", c.Param("task"), "hint", hint.ID)
+	slog.Info("inline hint served", "uid", doc.UID, "task", c.Param("task"), "hint", hint.ID)
 	return render(c, http.StatusOK, web.InlineHintFragment(hint))
 }
 
@@ -325,18 +339,22 @@ func quizTopics(questions []labbit.Question) []labbit.Topic {
 	return topics
 }
 
-func sectionExists(doc *labbit.Document, section string) bool {
-	if section == "overview" {
+func sectionExists(doc *labbit.Document, sectionType, section string) bool {
+	if sectionType == "labs" && section == "overview" {
 		return true
 	}
-	for _, topic := range doc.Topics {
-		if topic.ID == section {
-			return true
+	switch sectionType {
+	case "labs":
+		for _, topic := range doc.Topics {
+			if topic.ID == section {
+				return true
+			}
 		}
-	}
-	for _, topic := range quizTopics(doc.Questions) {
-		if topic.ID == section {
-			return true
+	case "quiz":
+		for _, topic := range quizTopics(doc.Questions) {
+			if topic.ID == section {
+				return true
+			}
 		}
 	}
 	return false

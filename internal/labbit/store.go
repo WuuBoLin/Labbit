@@ -230,8 +230,7 @@ func (s *Store) SaveDocument(ctx context.Context, doc *Document) error {
 			return err
 		}
 		for j, task := range topic.Items {
-			answerHTML := task.Answer
-			if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(document_id, topic_key, task_key, title, prompt_html, answer_html, position) VALUES(?,?,?,?,?,?,?)`, docID, topic.ID, task.ID, task.Title, task.Prompt, answerHTML, j); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(document_id, topic_key, task_key, title, prompt_html, answer_html, position) VALUES(?,?,?,?,?,?,?)`, docID, topic.ID, task.ID, task.Title, task.Prompt, "", j); err != nil {
 				return err
 			}
 			for k, hint := range task.Hints {
@@ -361,8 +360,7 @@ func taskHintBodies(hints []Hint) []string {
 
 func (s *Store) GetHints(ctx context.Context, docID int64, taskID string) (Task, error) {
 	var task Task
-	var answerHTML string
-	err := s.db.QueryRowContext(ctx, `SELECT task_key, title, answer_html FROM tasks WHERE document_id=? AND task_key=?`, docID, taskID).Scan(&task.ID, &task.Title, &answerHTML)
+	err := s.db.QueryRowContext(ctx, `SELECT task_key, title FROM tasks WHERE document_id=? AND task_key=?`, docID, taskID).Scan(&task.ID, &task.Title)
 	if err != nil {
 		return task, err
 	}
@@ -381,16 +379,7 @@ func (s *Store) GetHints(ctx context.Context, docID int64, taskID string) (Task,
 	if err := rows.Err(); err != nil {
 		return task, err
 	}
-	if len(task.Hints) == 0 && strings.TrimSpace(answerHTML) != "" {
-		task.Hints = append(task.Hints, Hint{
-			ID:    task.ID + "-answer",
-			Kind:  "solution",
-			Title: "Solution",
-			Body:  answerHTML,
-		})
-	}
 	task.HintCount = len(task.Hints)
-	task.Answer = answerHTML
 	return task, nil
 }
 
@@ -401,13 +390,12 @@ func (s *Store) GetSolution(ctx context.Context, docID int64, taskID string) (Ta
 	}
 	var solutions []Hint
 	for _, hint := range task.Hints {
-		if hint.Kind == "solution" || hint.Kind == "answer" {
+		if hint.Kind == "solution" {
 			solutions = append(solutions, hint)
 		}
 	}
 	task.Hints = solutions
 	task.HintCount = len(solutions)
-	task.AnswerCount = len(solutions)
 	if len(solutions) == 0 {
 		return task, sql.ErrNoRows
 	}
@@ -418,17 +406,6 @@ func (s *Store) GetHint(ctx context.Context, docID int64, taskID, hintID string)
 	var hint Hint
 	err := s.db.QueryRowContext(ctx, `SELECT hint_key, kind, title, body_html FROM task_hints WHERE document_id=? AND task_key=? AND hint_key=? AND kind='hint'`, docID, taskID, hintID).Scan(&hint.ID, &hint.Kind, &hint.Title, &hint.Body)
 	return hint, err
-}
-
-func (s *Store) GetAnswer(ctx context.Context, docID int64, taskID string) (Task, error) {
-	task, err := s.GetSolution(ctx, docID, taskID)
-	if err != nil {
-		return task, err
-	}
-	if task.Answer == "" {
-		task.Answer = strings.Join(taskHintBodies(task.Hints), " ")
-	}
-	return task, nil
 }
 
 func (s *Store) GetQuestion(ctx context.Context, docID int64, questionID string) (Question, error) {
@@ -503,7 +480,7 @@ func (s *Store) loadTopics(ctx context.Context, docID int64) ([]Topic, error) {
 		taskRows, err := s.db.QueryContext(ctx, `
 SELECT task_key, title, prompt_html,
 	(SELECT COUNT(*) FROM task_hints WHERE task_hints.document_id=tasks.document_id AND task_hints.task_key=tasks.task_key),
-	answer_html
+	(SELECT COUNT(*) FROM task_hints WHERE task_hints.document_id=tasks.document_id AND task_hints.task_key=tasks.task_key AND task_hints.kind='solution')
 FROM tasks
 WHERE document_id=? AND topic_key=?
 ORDER BY position`, docID, topics[i].ID)
@@ -512,16 +489,9 @@ ORDER BY position`, docID, topics[i].ID)
 		}
 		for taskRows.Next() {
 			var task Task
-			var answerHTML string
-			if err := taskRows.Scan(&task.ID, &task.Title, &task.Prompt, &task.HintCount, &answerHTML); err != nil {
+			if err := taskRows.Scan(&task.ID, &task.Title, &task.Prompt, &task.HintCount, &task.SolutionCount); err != nil {
 				taskRows.Close()
 				return nil, err
-			}
-			if task.HintCount == 0 && strings.TrimSpace(answerHTML) != "" {
-				task.HintCount = 1
-			}
-			if strings.TrimSpace(answerHTML) != "" {
-				task.AnswerCount = 1
 			}
 			topics[i].Items = append(topics[i].Items, task)
 		}
@@ -608,17 +578,17 @@ func CheckQuestion(q Question, selected []string) (bool, []string) {
 		got[id] = true
 	}
 	if len(want) != len(got) {
-		return false, keys(want)
+		return false, hints(want)
 	}
 	for id := range want {
 		if !got[id] {
-			return false, keys(want)
+			return false, hints(want)
 		}
 	}
-	return true, keys(want)
+	return true, hints(want)
 }
 
-func keys(m map[string]bool) []string {
+func hints(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

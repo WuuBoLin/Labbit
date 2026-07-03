@@ -74,7 +74,7 @@ func RenderMarkdown(src string) string {
 			out.WriteString(renderImageMarker(strings.TrimSpace(strings.TrimPrefix(trim, imageMarker))))
 			continue
 		}
-		if strings.HasPrefix(trim, `<button class="inline-answer-toggle"`) {
+		if strings.HasPrefix(trim, `<button class="inline-hint-toggle"`) {
 			flush()
 			out.WriteString(trim)
 			continue
