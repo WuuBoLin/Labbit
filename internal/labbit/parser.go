@@ -195,6 +195,8 @@ func taskPrompt(inner, taskID string, inlineHints []Hint) string {
 	decoder := xml.NewDecoder(strings.NewReader("<root>" + inner + "</root>"))
 	var out strings.Builder
 	skipDepth := 0
+	imageDepth := 0
+	var image imageComponent
 	hintIndex := 0
 	for {
 		tok, err := decoder.Token()
@@ -203,6 +205,10 @@ func taskPrompt(inner, taskID string, inlineHints []Hint) string {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			if imageDepth > 0 {
+				imageDepth++
+				continue
+			}
 			if t.Name.Local == "solution" || t.Name.Local == "answer" {
 				skipDepth = 1
 				continue
@@ -221,14 +227,32 @@ func taskPrompt(inner, taskID string, inlineHints []Hint) string {
 				skipDepth++
 				continue
 			}
+			if t.Name.Local == "image" {
+				imageDepth = 1
+				image = newImageComponent(t)
+				continue
+			}
 			writeComponentStart(&out, t)
 		case xml.EndElement:
+			if imageDepth > 0 {
+				imageDepth--
+				if imageDepth == 0 {
+					out.WriteString("\n\n")
+					out.WriteString(image.marker())
+					out.WriteString("\n\n")
+				}
+				continue
+			}
 			if skipDepth > 0 {
 				skipDepth--
 				continue
 			}
 			writeComponentEnd(&out, t)
 		case xml.CharData:
+			if imageDepth > 0 {
+				image.Body.Write([]byte(t))
+				continue
+			}
 			if skipDepth == 0 {
 				out.Write([]byte(t))
 			}
@@ -247,6 +271,8 @@ func inlineHintPlaceholder(taskID, hintID, title string) string {
 func componentMarkdown(s string) string {
 	decoder := xml.NewDecoder(strings.NewReader("<root>" + s + "</root>"))
 	var out strings.Builder
+	imageDepth := 0
+	var image imageComponent
 	for {
 		tok, err := decoder.Token()
 		if err != nil {
@@ -254,10 +280,32 @@ func componentMarkdown(s string) string {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			if imageDepth > 0 {
+				imageDepth++
+				continue
+			}
+			if t.Name.Local == "image" {
+				imageDepth = 1
+				image = newImageComponent(t)
+				continue
+			}
 			writeComponentStart(&out, t)
 		case xml.EndElement:
+			if imageDepth > 0 {
+				imageDepth--
+				if imageDepth == 0 {
+					out.WriteString("\n\n")
+					out.WriteString(image.marker())
+					out.WriteString("\n\n")
+				}
+				continue
+			}
 			writeComponentEnd(&out, t)
 		case xml.CharData:
+			if imageDepth > 0 {
+				image.Body.Write([]byte(t))
+				continue
+			}
 			out.Write([]byte(t))
 		}
 	}
@@ -265,6 +313,35 @@ func componentMarkdown(s string) string {
 		return dedentMarkdown(textOnly(s))
 	}
 	return dedentMarkdown(out.String())
+}
+
+type imageComponent struct {
+	Type string
+	Alt  string
+	Body strings.Builder
+}
+
+func newImageComponent(el xml.StartElement) imageComponent {
+	image := imageComponent{Alt: "Labbit image"}
+	for _, attr := range el.Attr {
+		switch attr.Name.Local {
+		case "type":
+			image.Type = attr.Value
+		case "alt":
+			if strings.TrimSpace(attr.Value) != "" {
+				image.Alt = strings.TrimSpace(attr.Value)
+			}
+		}
+	}
+	return image
+}
+
+func (image *imageComponent) marker() string {
+	values := url.Values{}
+	values.Set("type", image.Type)
+	values.Set("alt", image.Alt)
+	values.Set("body", image.Body.String())
+	return imageMarker + values.Encode()
 }
 
 func writeComponentStart(out *strings.Builder, el xml.StartElement) {

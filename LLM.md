@@ -128,6 +128,19 @@ Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option
 - This is not a hint: do not use it for solution-only material that should stay hidden until requested.
 - The body may contain normal supported Markdown.
 
+`<image type="..." alt="...">`
+
+- Visible image content.
+- Prefer `type="svg"` for diagrams, graphs, flowcharts, topology maps, and other explanatory visuals.
+- Keep SVGs transparent; do not add an overall background rectangle.
+- Labbit controls SVG text color for theme contrast, so do not set text fill/stroke colors.
+- Use explicit colors for non-text diagram shapes, lines, arrows, and highlights.
+- Do not rely on browser-default black fills for meaningful shapes.
+- Use inline SVG presentation attributes or a local `<style>` block inside the SVG; do not use external CSS, imported fonts, or URL-based paint servers.
+- Use base64 raster images only when the content must be an actual picture, screenshot, or photo.
+- Supported raster types are `png`, `jpg`, `jpeg`, `webp`, and `gif`.
+- Always write useful alt text.
+
 `<quiz>` and `<question>`
 
 - `<quiz>` contains one or more `<topic id="..." title="...">`.
@@ -212,6 +225,7 @@ Supported Markdown inside text bodies:
 - pipe tables with a header separator row
 - inline code with backticks
 - fenced code blocks with language tags such as `sh`, `yaml`, `go`, `python`, `xml`, `ini`
+- image components with SVG or base64 raster content
 
 Table example:
 
@@ -232,6 +246,28 @@ Collapsible example:
 | HTTPS | `443` |
 ]]></collapse>
 ````
+
+SVG image example:
+
+````xml
+<image type="svg" alt="Client connects to web server"><![CDATA[
+<svg viewBox="0 0 360 120" xmlns="http://www.w3.org/2000/svg">
+  <rect x="20" y="35" width="90" height="50" rx="6" fill="#18181b" stroke="#1d9bf0"/>
+  <text x="65" y="65" text-anchor="middle" font-size="14">Client</text>
+  <line x1="115" y1="60" x2="240" y2="60" stroke="#1d9bf0" stroke-width="2"/>
+  <rect x="245" y="35" width="95" height="50" rx="6" fill="#18181b" stroke="#1d9bf0"/>
+  <text x="292" y="65" text-anchor="middle" font-size="14">Server</text>
+</svg>
+]]></image>
+````
+
+Base64 image example:
+
+```xml
+<image type="png" alt="Terminal screenshot">
+iVBORw0KGgo...
+</image>
+```
 
 XML structural tags must remain real XML tags. Do not put `<hint>`, `<solution>`, `<task>`, `<question>`, or other Labbit tags inside CDATA.
 

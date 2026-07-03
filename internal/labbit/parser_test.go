@@ -195,6 +195,57 @@ Read the reference.
 	}
 }
 
+func TestParseImageComponent(t *testing.T) {
+	doc, err := Parse(strings.NewReader(`<labbit title="Images">
+  <overview>
+    <image type="svg" alt="Service graph"><![CDATA[
+<svg viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="10" width="100" height="40" fill="#18181b" onclick="alert(1)"/>
+  <text x="60" y="35" text-anchor="middle" fill="#e4e4e7">API</text>
+</svg>
+]]></image>
+  </overview>
+  <lab>
+    <topic title="Topic">
+      <task title="Task">
+Look at the screenshot.
+<image type="png" alt="Terminal screenshot">
+iVBORw0KGgo=
+</image>
+      </task>
+    </topic>
+  </lab>
+  <quiz>
+    <topic title="Quiz">
+      <question type="single">
+        <prompt><image type="svg" alt="Prompt diagram"><![CDATA[<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>]]></image></prompt>
+        <option correct="true">A</option>
+        <explanation><image type="svg" alt="Explanation diagram"><![CDATA[<svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10"/></svg>]]></image></explanation>
+      </question>
+    </topic>
+  </quiz>
+</labbit>`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !strings.Contains(doc.Overview, `<figure class="labbit-image labbit-svg"`) {
+		t.Fatalf("overview svg was not rendered: %s", doc.Overview)
+	}
+	if strings.Contains(doc.Overview, "onclick") {
+		t.Fatalf("unsafe svg attribute was not removed: %s", doc.Overview)
+	}
+	prompt := doc.Topics[0].Items[0].Prompt
+	if !strings.Contains(prompt, `data:image/png;base64,iVBORw0KGgo=`) {
+		t.Fatalf("task base64 image was not rendered: %s", prompt)
+	}
+	if !strings.Contains(doc.Questions[0].Prompt, `aria-label="Prompt diagram"`) {
+		t.Fatalf("quiz prompt image was not rendered: %s", doc.Questions[0].Prompt)
+	}
+	if !strings.Contains(doc.Questions[0].Explanation, `aria-label="Explanation diagram"`) {
+		t.Fatalf("quiz explanation image was not rendered: %s", doc.Questions[0].Explanation)
+	}
+}
+
 func TestParseRequiresOverview(t *testing.T) {
 	_, err := Parse(strings.NewReader(`<labbit title="Bad"></labbit>`))
 	if err == nil || !strings.Contains(err.Error(), "overview") {

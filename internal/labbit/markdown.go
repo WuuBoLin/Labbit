@@ -5,6 +5,8 @@ package labbit
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/xml"
 	"html"
 	"net/url"
 	"regexp"
@@ -16,10 +18,12 @@ import (
 )
 
 var inlineCodeRE = regexp.MustCompile("`([^`]+)`")
+var svgCSSURLRE = regexp.MustCompile(`(?i)url\(\s*['"]?([^'")\s]+)['"]?\s*\)`)
 
 const (
 	collapseStartMarker = ":::labbit-collapse "
 	collapseEndMarker   = ":::labbit-endcollapse"
+	imageMarker         = ":::labbit-image "
 )
 
 func RenderMarkdown(src string) string {
@@ -84,6 +88,11 @@ func RenderMarkdown(src string) string {
 				body = append(body, lines[i])
 			}
 			out.WriteString(renderCollapse(title, strings.Join(body, "\n")))
+			continue
+		}
+		if strings.HasPrefix(trim, imageMarker) {
+			closeLists()
+			out.WriteString(renderImageMarker(strings.TrimSpace(strings.TrimPrefix(trim, imageMarker))))
 			continue
 		}
 		if strings.HasPrefix(trim, `<button class="inline-answer-toggle"`) {
@@ -165,6 +174,205 @@ func renderCollapse(title, body string) string {
 		title = "Details"
 	}
 	return `<details class="labbit-collapse"><summary>` + inline(title) + `</summary><div class="labbit-collapse-body">` + RenderMarkdown(body) + `</div></details>`
+}
+
+func renderImageMarker(payload string) string {
+	values, err := url.ParseQuery(payload)
+	if err != nil {
+		return ""
+	}
+	kind := normalizeImageType(values.Get("type"))
+	alt := values.Get("alt")
+	if strings.TrimSpace(alt) == "" {
+		alt = "Labbit image"
+	}
+	body := values.Get("body")
+	switch kind {
+	case "svg":
+		svg := sanitizeSVG(body)
+		if svg == "" {
+			return ""
+		}
+		return `<figure class="labbit-image labbit-svg" role="img" aria-label="` + html.EscapeString(alt) + `">` + svg + `</figure>`
+	case "png", "jpeg", "webp", "gif":
+		data := cleanBase64(body)
+		if data == "" {
+			return ""
+		}
+		return `<figure class="labbit-image"><img src="data:` + imageMime(kind) + `;base64,` + data + `" alt="` + html.EscapeString(alt) + `"></figure>`
+	default:
+		return ""
+	}
+}
+
+func normalizeImageType(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "svg", "image/svg+xml":
+		return "svg"
+	case "png", "image/png":
+		return "png"
+	case "jpg", "jpeg", "image/jpg", "image/jpeg":
+		return "jpeg"
+	case "webp", "image/webp":
+		return "webp"
+	case "gif", "image/gif":
+		return "gif"
+	default:
+		return ""
+	}
+}
+
+func imageMime(kind string) string {
+	if kind == "jpeg" {
+		return "image/jpeg"
+	}
+	return "image/" + kind
+}
+
+func cleanBase64(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, ",") && strings.HasPrefix(strings.ToLower(value), "data:") {
+		value = value[strings.Index(value, ",")+1:]
+	}
+	value = strings.Join(strings.Fields(value), "")
+	if value == "" {
+		return ""
+	}
+	if _, err := base64.StdEncoding.DecodeString(value); err != nil {
+		return ""
+	}
+	return value
+}
+
+var (
+	svgElements = map[string]bool{
+		"svg": true, "g": true, "defs": true, "title": true, "desc": true,
+		"path": true, "rect": true, "circle": true, "ellipse": true, "line": true, "polyline": true, "polygon": true,
+		"text": true, "tspan": true, "marker": true, "linearGradient": true, "radialGradient": true, "stop": true,
+		"style": true,
+	}
+	svgAttrs = map[string]bool{
+		"aria-label": true, "aria-hidden": true, "class": true, "cx": true, "cy": true, "d": true, "dx": true, "dy": true,
+		"fill": true, "fill-opacity": true, "font-family": true, "font-size": true, "font-weight": true,
+		"gradientUnits": true, "height": true, "id": true, "marker-end": true, "marker-mid": true, "marker-start": true,
+		"markerHeight": true, "markerWidth": true,
+		"offset": true, "opacity": true, "orient": true, "points": true, "preserveAspectRatio": true,
+		"r": true, "refX": true, "refY": true, "rx": true, "ry": true, "spreadMethod": true, "stop-color": true, "stop-opacity": true,
+		"style":  true,
+		"stroke": true, "stroke-dasharray": true, "stroke-linecap": true, "stroke-linejoin": true, "stroke-opacity": true, "stroke-width": true,
+		"text-anchor": true, "transform": true, "viewBox": true, "width": true, "x": true, "x1": true, "x2": true,
+		"y": true, "y1": true, "y2": true,
+	}
+)
+
+func sanitizeSVG(src string) string {
+	decoder := xml.NewDecoder(strings.NewReader(strings.TrimSpace(src)))
+	var out strings.Builder
+	var stack []bool
+	var names []string
+	sawSVG := false
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			name := t.Name.Local
+			parentAllowed := len(stack) == 0 || stack[len(stack)-1]
+			allowed := parentAllowed && svgElements[name]
+			stack = append(stack, allowed)
+			names = append(names, name)
+			if !allowed {
+				continue
+			}
+			if name == "svg" {
+				sawSVG = true
+			}
+			out.WriteByte('<')
+			out.WriteString(name)
+			for _, attr := range t.Attr {
+				attrName := attr.Name.Local
+				if !svgAttrs[attrName] || unsafeSVGAttr(attrName, attr.Value) {
+					continue
+				}
+				out.WriteByte(' ')
+				out.WriteString(attrName)
+				out.WriteString(`="`)
+				out.WriteString(html.EscapeString(attr.Value))
+				out.WriteByte('"')
+			}
+			out.WriteByte('>')
+		case xml.EndElement:
+			if len(stack) == 0 {
+				continue
+			}
+			allowed := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			name := names[len(names)-1]
+			names = names[:len(names)-1]
+			if allowed {
+				out.WriteString("</")
+				out.WriteString(name)
+				out.WriteByte('>')
+			}
+		case xml.CharData:
+			if len(stack) > 0 && stack[len(stack)-1] {
+				text := string(t)
+				if names[len(names)-1] == "style" {
+					if unsafeSVGStyle(text) {
+						continue
+					}
+					out.WriteString(text)
+				} else {
+					out.WriteString(html.EscapeString(text))
+				}
+			}
+		}
+	}
+	if !sawSVG {
+		return ""
+	}
+	return out.String()
+}
+
+func unsafeSVGAttr(name, value string) bool {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	lowerValue := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lowerName, "on") ||
+		(lowerName == "style" && unsafeSVGStyle(value)) ||
+		strings.Contains(lowerValue, "javascript:") ||
+		strings.Contains(lowerValue, "data:") ||
+		(strings.Contains(lowerValue, "url(") && !localSVGURLValue(lowerValue))
+}
+
+func unsafeSVGStyle(value string) bool {
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "@import") ||
+		strings.Contains(lower, "javascript:") ||
+		strings.Contains(lower, "data:") ||
+		strings.Contains(lower, "<") {
+		return true
+	}
+	for _, match := range svgCSSURLRE.FindAllStringSubmatch(value, -1) {
+		if len(match) < 2 || !strings.HasPrefix(strings.TrimSpace(match[1]), "#") {
+			return true
+		}
+	}
+	return false
+}
+
+func localSVGURLValue(value string) bool {
+	matches := svgCSSURLRE.FindAllStringSubmatch(value, -1)
+	if len(matches) == 0 {
+		return false
+	}
+	for _, match := range matches {
+		if len(match) < 2 || !strings.HasPrefix(strings.TrimSpace(match[1]), "#") {
+			return false
+		}
+	}
+	return true
 }
 
 func tableStart(lines []string, i int) ([]string, []string, bool) {

@@ -282,6 +282,25 @@
     @apply border-t border-zinc-800 px-3 py-3;
   }
 
+  .labbit-image {
+    @apply overflow-x-auto rounded border border-zinc-800 bg-zinc-950 p-3;
+  }
+
+  .labbit-image img,
+  .labbit-image svg {
+    @apply mx-auto h-auto max-w-full;
+  }
+
+  .labbit-svg svg {
+    @apply min-w-0;
+    color: rgb(228 228 231);
+  }
+
+  .labbit-svg svg text,
+  .labbit-svg svg tspan {
+    fill: currentColor !important;
+  }
+
   .code-shell {
     @apply overflow-hidden rounded border border-zinc-800 bg-zinc-950;
   }
