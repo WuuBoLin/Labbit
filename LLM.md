@@ -1,21 +1,56 @@
 # Labbit Authoring Guide
 
-Labbit reads one XML file containing Markdown lab and quiz content. Generate valid XML that follows this guide exactly.
+Labbit reads one XML file that defines a lab, quiz, or combined lab-and-quiz workspace. This guide is the canonical specification for generating valid Labbit XML.
 
-## File Format
+## Core Model
 
-Use one `<labbit>` root element. Markdown is allowed inside content elements.
+A Labbit file is XML with Markdown content inside text-bearing elements. Structural Labbit tags are XML elements; prose, lists, tables, code blocks, diagrams, hints, solutions, collapses, and quiz prompt or explanation content can be composed freely wherever the component is allowed.
+
+CDATA is not a Labbit component. CDATA is only an XML mechanism for placing Markdown, code, SVG, or base64 text inside an element without escaping every `<`, `>`, and `&`. Labbit components such as `<image>`, `<collapse>`, `<hint>`, and `<solution>` must remain real XML tags outside CDATA.
+
+Text and visible components can be interleaved:
+
+````xml
+<task id="inspect-service" title="Inspect a service">
+Read the unit status before changing anything.
+
+<image type="svg" alt="Service state flow"><![CDATA[
+<svg viewBox="0 0 260 80" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="20" width="90" height="40" rx="6" fill="#18181b" stroke="#1d9bf0"/>
+  <text x="55" y="45" text-anchor="middle" font-size="13">inactive</text>
+  <line x1="105" y1="40" x2="155" y2="40" stroke="#1d9bf0" stroke-width="2"/>
+  <rect x="160" y="20" width="90" height="40" rx="6" fill="#18181b" stroke="#22c55e"/>
+  <text x="205" y="45" text-anchor="middle" font-size="13">active</text>
+</svg>
+]]></image>
+
+Then capture the command output and explain the current state.
+
+<collapse title="Useful status fields">
+Focus on `Loaded`, `Active`, and recent log lines.
+</collapse>
+
+<hint title="Status command">
+Use `systemctl status`.
+</hint>
+</task>
+````
+
+## File Structure
+
+Use exactly one `<labbit>` root element. The root must contain one `<overview>`. It may also contain one `<lab>`, one `<quiz>`, or both.
 
 ````xml
 <labbit title="Linux Services Exam" slug="linux-services" accent="DEFAULT">
   <overview>
 # Linux Services Exam
-Practice Linux service setup and validation.
+
+Practice service setup, validation, and troubleshooting.
   </overview>
 
   <lab>
-	<topic id="samba" title="Samba">
-	  <task id="setup-samba" title="Setup Samba">
+    <topic id="samba" title="Samba">
+      <task id="setup-samba" title="Setup Samba">
 Install Samba and make it start at boot.
 
 Requirements:
@@ -27,13 +62,6 @@ Requirements:
 <hint title="Service package">
 Use the `samba` package and the `smb` service.
 </hint>
-
-<hint title="Commands"><![CDATA[
-```sh
-dnf install -y samba
-systemctl enable --now smb
-```
-]]></hint>
 
 <solution><![CDATA[
 Install and start Samba:
@@ -48,27 +76,25 @@ Verify the service:
 ```sh
 systemctl status smb
 ```
-
-This installs Samba, starts the SMB daemon now, and enables it for future boots.
 ]]></solution>
-	  </task>
-	</topic>
+      </task>
+    </topic>
   </lab>
 
   <quiz>
-	<topic id="basics" title="Basics">
-	  <question id="smb-service" type="single">
-		<prompt>Which daemon provides SMB file sharing?</prompt>
-		<option id="a" correct="true">smb</option>
-		<option id="b">sshd</option>
-		<explanation>The `smb` service provides SMB file sharing.</explanation>
-	  </question>
-	</topic>
+    <topic id="basics" title="Basics">
+      <question id="smb-service" type="single">
+        <prompt>Which daemon provides SMB file sharing?</prompt>
+        <option id="a" correct="true">smb</option>
+        <option id="b">sshd</option>
+        <explanation>The `smb` service provides SMB file sharing.</explanation>
+      </question>
+    </topic>
   </quiz>
 </labbit>
 ````
 
-Required:
+Required root content:
 
 - `<labbit title="...">`
 - `<overview>...</overview>`
@@ -79,152 +105,204 @@ Optional root attributes:
 - `accent="#RRGGBB"`: custom accent color.
 - `accent="DEFAULT"` or missing: use the default accent.
 
-Optional sections:
+Optional root sections:
 
-- `<lab>` with lab topics and tasks
-- `<quiz>` with quiz topics and questions
+- `<lab>`: contains lab topics and tasks.
+- `<quiz>`: contains quiz topics and questions.
+
+IDs:
+
+- Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option`.
+- IDs should be unique within their natural scope.
+- If an ID is omitted, Labbit derives one from the title or surrounding content, but generated files should provide explicit stable IDs.
 
 ## Components
 
-Use stable lowercase kebab-case IDs for `topic`, `task`, `question`, and `option`.
-
-`<overview>`
+=> `<labbit>`
+> The root element for one Labbit document.
 
 - Required.
-- Describe what the lab/exam covers.
-- May contain Markdown headings, lists, inline code, and fenced code blocks.
+- Must wrap the entire file.
+- Requires a non-empty `title` attribute.
+- May include `slug` and `accent` attributes.
+- Must contain one `<overview>`.
+- May contain `<lab>`, `<quiz>`, or both.
 
-`<lab>` and `<topic>`
+=> `<overview>`
+> The introductory content shown before lab tasks and quiz questions.
 
-- `<lab>` contains one or more `<topic id="..." title="...">`.
-- A lab topic contains one or more `<task>`.
+- Required.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, `<collapse>`, and `<image>`.
+- Should describe the document scope, prerequisites, context, or orientation material.
 
-`<task id="..." title="...">`
+=> `<lab>`
+> The optional section that groups hands-on tasks.
 
-- Contains the visible learner prompt plus optional hidden hint or solution content.
-- The visible prompt must describe the task, requirements, constraints, expected result, and starter material.
-- Do not put solution-only commands, final config, or exact completed files directly in the visible prompt.
+- Optional.
+- Contains one or more lab `<topic>` elements when present.
+- Does not directly contain tasks; tasks belong inside lab topics.
 
-`<hint title="...">`
+=> `<topic id="..." title="...">`
+> A named group of lab tasks or quiz questions.
 
-- Hidden inline hint content.
-- Appears at the exact location of the tag when revealed.
-- Use for hint chunks that naturally belong between visible requirements or steps.
-- Content should read like normal prose/code when revealed, not like quiz feedback.
-- May contain anything, including Markdown, lists, commands, configuration snippets, fenced code blocks, and explanations.
+- Required inside `<lab>` and `<quiz>` when those sections are present.
+- Requires a meaningful `title`.
+- Should include a stable `id`.
+- Inside `<lab>`, contains one or more `<task>` elements.
+- Inside `<quiz>`, contains one or more `<question>` elements.
 
-`<solution>`
+=> `<task id="..." title="...">`
+> One hands-on lab task, including visible prompt content and optional revealable help.
 
-- Hidden separated full solution.
-- Use when a complete final procedure or final explanation should be shown as one block.
-- A task may use `<hint>`, `<solution>`, both, or neither.
-- If both are used, `<hint>` blocks should be short inline hint chunks and `<solution>` should be the complete final procedure.
+- Required inside lab topics.
+- Requires a meaningful `title`.
+- Should include a stable `id`.
+- The visible task body may contain Markdown, `<note>`, `<callout>`, `<collapse>`, `<image>`, and `<hint>`.
+- May contain one `<solution>`.
+- May contain any number of `<hint>` elements.
+- `<hint>` elements appear in the visible task flow as reveal controls; their bodies are hidden until revealed.
+- `<solution>` is hidden from the visible task body and is shown through the task solution control.
+- Do not use the legacy `<answer>` tag; it is not supported.
 
-`<collapse title="...">`
+=> `<hint id="..." title="...">`
+> Hidden inline help that is anchored at its exact position in a task.
 
-- Visible collapsible reference content.
-- Use for optional background, examples, command output, tables, or supporting details that are not hidden hints or solutions.
-- This is not a hint: do not use it for solution-only material that should stay hidden until requested.
-- The body may contain normal supported Markdown.
+- Optional inside `<task>`.
+- Requires a `title`; if omitted, Labbit falls back to a generic title.
+- May include a stable `id`.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, `<collapse>`, and `<image>`.
+- Use as an inline revealable component within the task sequence.
 
-`<image type="..." alt="...">`
+=> `<solution>`
+> Hidden task-level solution content.
 
-- Visible image content.
-- Prefer `type="svg"` for diagrams, graphs, flowcharts, topology maps, and other explanatory visuals.
-- Keep SVGs transparent; do not add an overall background rectangle.
-- Labbit controls SVG text color for theme contrast, so do not set text fill/stroke colors.
-- Use explicit colors for non-text diagram shapes, lines, arrows, and highlights.
-- Do not rely on browser-default black fills for meaningful shapes.
-- Use inline SVG presentation attributes or a local `<style>` block inside the SVG; do not use external CSS, imported fonts, or URL-based paint servers.
-- Use base64 raster images only when the content must be an actual picture, screenshot, or photo.
-- Supported raster types are `png`, `jpg`, `jpeg`, `webp`, and `gif`.
-- Always write useful alt text.
+- Optional inside `<task>`.
+- A task may have no solution or one solution.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, `<collapse>`, and `<image>`.
+- Represents the task's complete revealable solution block.
+- Is not part of the visible prompt flow.
 
-`<quiz>` and `<question>`
+=> `<quiz>`
+> The optional section that groups questions.
 
-- `<quiz>` contains one or more `<topic id="..." title="...">`.
-- A quiz topic contains one or more `<question>`.
-- Use `<question type="single">` for radio questions.
-- Use `<question type="multiple">` for checkbox questions.
-- Each question must contain one `<prompt>`, at least two `<option>` elements, and one `<explanation>`.
-- Mark correct options with `correct="true"`.
+- Optional.
+- Contains one or more quiz `<topic>` elements when present.
+- Does not directly contain questions; questions belong inside quiz topics.
 
-`<option id="..." correct="true">`
+=> `<question id="..." type="single|multiple">`
+> One quiz question.
 
-- Keep option labels short and unambiguous.
+- Required inside quiz topics.
+- Should include a stable `id`.
+- Must contain one `<prompt>`.
+- Must contain at least two `<option>` elements.
+- Must contain one `<explanation>`.
+- The prompt and explanation are full text-bearing content areas; they may use Markdown and visible formatting components.
+- Use `type="single"` for radio-button questions.
+- Use `type="multiple"` for checkbox questions.
+- `type="checkbox"` and `type="multiple-choice"` are accepted as aliases for `multiple`, but generated files should use `multiple`.
+- Missing or unrecognized `type` values are treated as `single`.
+
+=> `<prompt>`
+> The rendered question prompt.
+
+- Required inside `<question>`.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, `<collapse>`, and `<image>`.
+- Should contain the full question stem.
+
+=> `<option id="..." correct="true">`
+> One selectable answer label for a quiz question.
+
+- Required inside `<question>`.
+- Each question must have at least two options.
+- Should include a stable `id`.
+- The label is plain text after XML text extraction.
+- Mark correct answers with `correct="true"`.
+- Omit `correct` or use `correct="false"` for incorrect answers.
 - For `type="single"`, exactly one option must be correct.
 - For `type="multiple"`, one or more options may be correct.
 
-`<explanation>`
+=> `<explanation>`
+> Feedback shown after a quiz answer is submitted.
 
-- Explain why the correct answer is correct.
-- Explain common wrong-answer misconceptions when useful.
-- Must be useful even when the learner answered correctly.
+- Required inside `<question>`.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, `<collapse>`, and `<image>`.
+- Should explain the answer in a way that is useful whether the learner was right or wrong.
 
-## Lab Rules
+=> `<note>`
+> A short note rendered as quoted supporting text.
 
-- Write concrete, verifiable tasks.
-- Prefer imperative task titles: “Configure a static IP address”, “Create a Samba share”.
-- Keep visible prompts challenge-focused.
-- Put hidden inline hint chunks in `<hint>`.
-- Put complete final procedures in `<solution>`.
-- Do not write vague hidden content such as “configure it correctly”.
-- Include exact commands, paths, file contents, verification steps, and short explanations when they are needed.
-- If a command or config is the expected answer, hide it unless it is intentionally starter material.
+- Optional inside text-bearing content.
+- May contain Markdown text.
+- May appear in overview, task bodies, hints, solutions, prompts, explanations, and collapses.
+- Use only as a content wrapper; it is not hidden.
 
-Good inline hint:
+=> `<callout>`
+> A general quoted callout rendered as supporting text.
 
-````xml
-<hint title="Inventory pattern"><![CDATA[
-Use a `web` group in the inventory:
+- Optional inside text-bearing content.
+- May contain Markdown text.
+- May appear in overview, task bodies, hints, solutions, prompts, explanations, and collapses.
+- Use only as a content wrapper; it is not hidden.
 
-```ini
-[web]
-web1
-web2
-```
-]]></hint>
-````
+=> `<collapse title="...">`
+> Visible collapsible content.
 
-Good separated solution:
+- Optional inside text-bearing content.
+- Requires a `title`; if omitted, Labbit uses `Details`.
+- May contain Markdown.
+- May contain `<note>`, `<callout>`, and `<image>`.
+- Is visible as an expandable details block.
+- Is not hidden hint or solution content.
 
-````xml
-<solution><![CDATA[
-Create `inventory.ini`:
+=> `<image type="..." alt="...">`
+> A visible inline image component.
 
-```ini
-[web]
-web1
-web2
-```
+- Optional inside text-bearing content.
+- Requires `type`.
+- Requires useful `alt` text; if omitted, Labbit uses a generic fallback.
+- The body must be inline SVG or base64 raster image data.
+- Supported SVG types: `svg`, `image/svg+xml`.
+- Supported raster types: `png`, `jpg`, `jpeg`, `webp`, `gif`, and their image MIME forms.
+- Raster bodies may be raw base64 or a data URL; whitespace is ignored.
+- Unsupported types or invalid image bodies render nothing.
 
-Run the playbook:
+## Markdown
 
-```sh
-ansible-playbook -i inventory.ini site.yml
-```
-]]></solution>
-````
+Markdown is supported in text-bearing elements:
 
-## Quiz Rules
+- `<overview>`
+- `<task>` visible body
+- `<hint>`
+- `<solution>`
+- `<prompt>`
+- `<explanation>`
+- `<note>`
+- `<callout>`
+- `<collapse>`
 
-- Single-choice questions must have exactly one correct option.
-- Multiple-choice questions must have at least one correct option.
-- Do not use trick wording unless the topic requires distinguishing similar concepts.
-- Avoid “all of the above” and “none of the above” unless they are truly meaningful.
-- Every quiz question must include an explanation.
+Supported Markdown includes:
 
-## Markdown and XML Rules
+- ATX and Setext headings
+- paragraphs and line breaks
+- bold, italic, strikethrough, and inline code
+- links and autolinks
+- blockquotes
+- unordered lists
+- ordered lists, including non-1 starts
+- task-list checkboxes
+- pipe tables with optional left, center, or right alignment
+- definition lists
+- footnotes
+- thematic breaks
+- indented and fenced code blocks with optional language tags
 
-Supported Markdown inside text bodies:
-
-- `#`, `##`, `###` headings
-- unordered lists with `-` or `*`
-- ordered lists like `1. Step`
-- pipe tables with a header separator row
-- inline code with backticks
-- fenced code blocks with language tags such as `sh`, `yaml`, `go`, `python`, `xml`, `ini`
-- image components with SVG or base64 raster content
+Markdown images are not used for images. Use the Labbit `<image>` component instead. Raw HTML in Markdown is escaped, not rendered as HTML.
 
 Table example:
 
@@ -235,40 +313,24 @@ Table example:
 | HTTPS | `443` |
 ```
 
-Collapsible example:
+Fenced code example:
 
-````xml
-<collapse title="Reference ports"><![CDATA[
-| Service | Port |
-| --- | ---: |
-| SSH | `22` |
-| HTTPS | `443` |
-]]></collapse>
-````
-
-SVG image example:
-
-````xml
-<image type="svg" alt="Client connects to web server"><![CDATA[
-<svg viewBox="0 0 360 120" xmlns="http://www.w3.org/2000/svg">
-  <rect x="20" y="35" width="90" height="50" rx="6" fill="#18181b" stroke="#1d9bf0"/>
-  <text x="65" y="65" text-anchor="middle" font-size="14">Client</text>
-  <line x1="115" y1="60" x2="240" y2="60" stroke="#1d9bf0" stroke-width="2"/>
-  <rect x="245" y="35" width="95" height="50" rx="6" fill="#18181b" stroke="#1d9bf0"/>
-  <text x="292" y="65" text-anchor="middle" font-size="14">Server</text>
-</svg>
-]]></image>
-````
-
-Base64 image example:
-
-```xml
-<image type="png" alt="Terminal screenshot">
-iVBORw0KGgo...
-</image>
+````markdown
+```sh
+systemctl enable --now smb
+systemctl status smb
 ```
+````
 
-XML structural tags must remain real XML tags. Do not put `<hint>`, `<solution>`, `<task>`, `<question>`, or other Labbit tags inside CDATA.
+## XML and CDATA Rules
+
+Labbit files must be valid XML.
+
+- Use CDATA inside a content element when Markdown, code, SVG, or base64 contains XML-sensitive characters.
+- Otherwise escape XML-sensitive characters as `&lt;`, `&gt;`, and `&amp;`.
+- Keep Labbit structural tags outside CDATA.
+- Do not wrap `<hint>`, `<solution>`, `<collapse>`, `<image>`, `<task>`, `<question>`, or other Labbit tags inside CDATA.
+- Do not use an XML declaration or multiple root elements.
 
 Correct:
 
@@ -290,4 +352,137 @@ ansible-vault create group_vars/all/vault.yml
 ]]>
 ````
 
-Use CDATA inside content elements when Markdown contains XML-sensitive characters such as `<`, `>`, or `&`. Otherwise, escape those characters as `&lt;`, `&gt;`, and `&amp;`.
+## Image Rules
+
+SVG images:
+
+- Use `type="svg"` for diagrams, graphs, flowcharts, topology maps, and other explanatory visuals.
+- Include a valid `<svg>` root in the image body.
+- Prefer a `viewBox` so the image scales correctly.
+- Keep SVGs transparent; do not add an overall background rectangle.
+- Do not rely on browser-default black fills for meaningful shapes.
+- Use explicit colors for non-text diagram shapes, lines, arrows, and highlights.
+- Labbit controls SVG text contrast in the viewer, so avoid hard-coded text fill and stroke colors unless a specific label color is necessary.
+- Use inline SVG presentation attributes, safe `style` attributes, or a local `<style>` block.
+- Do not use scripts, event attributes, external CSS, imported fonts, remote URLs, external images, or non-local CSS `url(...)` references.
+- Local paint-server references such as `url(#arrow)` are supported.
+
+Raster images:
+
+- Use raster images only when the content must be a picture, screenshot, or photo.
+- Use base64 image data in the image body.
+- Supported raster formats are PNG, JPEG, WEBP, and GIF.
+- Include accurate `alt` text.
+
+SVG example:
+
+````xml
+<image type="svg" alt="Client connects to web server"><![CDATA[
+<svg viewBox="0 0 360 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1d9bf0"/>
+    </marker>
+  </defs>
+  <rect x="20" y="35" width="90" height="50" rx="6" fill="#18181b" stroke="#1d9bf0"/>
+  <text x="65" y="65" text-anchor="middle" font-size="14">Client</text>
+  <line x1="115" y1="60" x2="240" y2="60" stroke="#1d9bf0" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="245" y="35" width="95" height="50" rx="6" fill="#18181b" stroke="#22c55e"/>
+  <text x="292" y="65" text-anchor="middle" font-size="14">Server</text>
+</svg>
+]]></image>
+````
+
+Raster example:
+
+```xml
+<image type="png" alt="Terminal screenshot">
+iVBORw0KGgo...
+</image>
+```
+
+## Lab Authoring Rules
+
+- Write concrete, verifiable tasks.
+- Use task titles that identify the action or outcome.
+- Keep solution-only commands, final config, completed files, and final answers inside `<hint>` or `<solution>` unless they are intentional starter material.
+- Place inline revealable help at the relevant location with `<hint>`.
+- Place complete task-level revealable solutions in `<solution>`.
+- Include exact commands, paths, file contents, verification steps, and explanations when those details are part of the expected answer.
+- Avoid vague hidden content such as "configure it correctly."
+
+Interleaved task example:
+
+````xml
+<task id="create-inventory" title="Create an inventory">
+Create an inventory with a `web` group and two hosts.
+
+<hint title="Inventory pattern"><![CDATA[
+Use an INI group header:
+
+```ini
+[web]
+web1
+web2
+```
+]]></hint>
+
+After writing the file, run the playbook against that inventory.
+
+<collapse title="Command format">
+`ansible-playbook -i INVENTORY PLAYBOOK`
+</collapse>
+
+<solution><![CDATA[
+Create `inventory.ini`:
+
+```ini
+[web]
+web1
+web2
+```
+
+Run the playbook:
+
+```sh
+ansible-playbook -i inventory.ini site.yml
+```
+]]></solution>
+</task>
+````
+
+## Quiz Authoring Rules
+
+- Single-choice questions must have exactly one correct option.
+- Multiple-choice questions must have at least one correct option.
+- Each question must include an explanation.
+- Avoid "all of the above" and "none of the above" unless they are materially part of the assessment.
+- Keep option labels clear and distinct.
+- Use Markdown, tables, code blocks, collapses, callouts, and images in `<prompt>` or `<explanation>` whenever the question needs formatted context.
+- Put diagrams or extended context in `<prompt>` or `<explanation>`, not inside `<option>`.
+
+Quiz example:
+
+````xml
+<question id="smb-ports" type="multiple">
+  <prompt><![CDATA[
+Review the service notes and select every SMB-related port.
+
+| Service | Port |
+| --- | ---: |
+| SSH | `22` |
+| SMB over TCP | `445` |
+| NetBIOS session service | `139` |
+  ]]></prompt>
+  <option id="a" correct="true">445</option>
+  <option id="b" correct="true">139</option>
+  <option id="c">22</option>
+  <explanation>
+SMB commonly uses TCP 445. NetBIOS session traffic may use TCP 139. SSH uses TCP 22.
+
+<collapse title="Why SSH is not selected">
+SSH is a remote shell protocol. It is commonly used to administer servers, but it is not part of SMB file sharing.
+</collapse>
+  </explanation>
+</question>
+````

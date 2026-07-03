@@ -26,6 +26,7 @@ func TestThemeStylesArePresent(t *testing.T) {
 	for _, want := range []string{
 		`html[data-theme="light"]`,
 		`--svg-text:`,
+		`.footnotes ol`,
 		`.theme-toggle`,
 		`.sidebar-bottom`,
 		`html[data-theme="dark"] .theme-toggle-sun`,

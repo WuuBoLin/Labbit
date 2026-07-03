@@ -100,7 +100,7 @@ Use **strong**, *emphasis*, and ~~stale~~ text.
 		`<em>emphasis</em>`,
 		`<del>stale</del>`,
 		`<blockquote>`,
-		`<ol>`,
+		`<ol class="labbit-ordered">`,
 		`<hr />`,
 	} {
 		if !strings.Contains(html, want) {
@@ -133,6 +133,95 @@ Footnote marker.[^n]
 		if !strings.Contains(html, want) {
 			t.Fatalf("expected %q in rendered markdown: %s", want, html)
 		}
+	}
+}
+
+func TestRenderMarkdownListsUseLabbitClasses(t *testing.T) {
+	html := RenderMarkdown(`
+- unordered
+  - nested unordered
+
+4. ordered
+5. next
+   1. nested ordered
+`)
+	for _, want := range []string{
+		`<ul class="labbit-list">`,
+		`<ol class="labbit-ordered" start="4">`,
+		`<li>unordered`,
+		`<li>nested unordered</li>`,
+		`<li>ordered</li>`,
+		`<ol class="labbit-ordered">`,
+		`<li>nested ordered</li>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in rendered markdown: %s", want, html)
+		}
+	}
+}
+
+func TestRenderMarkdownImplementedSyntaxSurvey(t *testing.T) {
+	html := RenderMarkdown(`
+# Heading
+
+Plain paragraph with **bold**, *italic*, ~~strike~~, ` + "`code`" + `, [link](https://example.com), and <https://example.com/docs>.
+
+> Quote
+
+- item
+- [x] checked
+
+1. step
+2. next
+
+| Left | Center | Right |
+| --- | :---: | ---: |
+| <tag> | ` + "`cell`" + ` | value |
+
+Term
+: Definition text
+
+` + "```go" + `
+fmt.Println("<safe>")
+` + "```" + `
+
+Footnote marker.[^n]
+
+[^n]: Footnote body
+
+<script>alert(1)</script>
+`)
+	for _, want := range []string{
+		`<h1 id="heading">Heading</h1>`,
+		`<strong>bold</strong>`,
+		`<em>italic</em>`,
+		`<del>strike</del>`,
+		`<code class="inline-code">code</code>`,
+		`<a href="https://example.com">link</a>`,
+		`<a href="https://example.com/docs">https://example.com/docs</a>`,
+		`<blockquote>`,
+		`<ul class="labbit-list">`,
+		`<ol class="labbit-ordered">`,
+		`<input checked="" disabled="" type="checkbox" />`,
+		`<div class="labbit-table-wrap"><table class="labbit-table">`,
+		`<th class="align-center">Center</th>`,
+		`<td>&lt;tag&gt;</td>`,
+		`<td class="align-center"><code class="inline-code">cell</code></td>`,
+		`<dl>`,
+		`<dt>Term</dt>`,
+		`<dd>Definition text</dd>`,
+		`<div class="code-shell">`,
+		`fmt.Println`,
+		`class="footnote-ref"`,
+		`Footnote body`,
+		`&lt;script&gt;alert(1)&lt;/script&gt;`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in rendered markdown: %s", want, html)
+		}
+	}
+	if strings.Contains(html, "<script>") {
+		t.Fatalf("raw HTML was not escaped: %s", html)
 	}
 }
 

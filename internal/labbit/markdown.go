@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -120,6 +121,7 @@ func (r labbitMarkdownRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegis
 	reg.Register(gast.KindFencedCodeBlock, r.renderFencedCodeBlock)
 	reg.Register(gast.KindHTMLBlock, r.renderHTMLBlock)
 	reg.Register(gast.KindImage, r.renderImage)
+	reg.Register(gast.KindList, r.renderList)
 	reg.Register(gast.KindLink, r.renderLink)
 	reg.Register(gast.KindAutoLink, r.renderAutoLink)
 	reg.Register(gast.KindRawHTML, r.renderRawHTML)
@@ -160,6 +162,34 @@ func (r labbitMarkdownRenderer) renderCodeSpan(w util.BufWriter, source []byte, 
 		_, _ = w.Write(util.EscapeHTML(text))
 	}
 	return gast.WalkSkipChildren, nil
+}
+
+func (r labbitMarkdownRenderer) renderList(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {
+	list := node.(*gast.List)
+	tag := "ul"
+	class := "labbit-list"
+	if list.IsOrdered() {
+		tag = "ol"
+		class = "labbit-ordered"
+	}
+	if entering {
+		_ = w.WriteByte('<')
+		_, _ = w.WriteString(tag)
+		_, _ = w.WriteString(` class="`)
+		_, _ = w.WriteString(class)
+		_ = w.WriteByte('"')
+		if list.IsOrdered() && list.Start != 1 {
+			_, _ = w.WriteString(` start="`)
+			_, _ = w.WriteString(strconv.Itoa(list.Start))
+			_ = w.WriteByte('"')
+		}
+		_, _ = w.WriteString(">\n")
+	} else {
+		_, _ = w.WriteString("</")
+		_, _ = w.WriteString(tag)
+		_, _ = w.WriteString(">\n")
+	}
+	return gast.WalkContinue, nil
 }
 
 func (r labbitMarkdownRenderer) renderHTMLBlock(w util.BufWriter, source []byte, node gast.Node, entering bool) (gast.WalkStatus, error) {

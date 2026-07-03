@@ -838,6 +838,10 @@
     text-decoration: none;
   }
 
+  .footnotes ol {
+    @apply list-decimal space-y-2 pl-6;
+  }
+
   .inline-code,
   .prose-dark p code,
   .prose-dark li code,
