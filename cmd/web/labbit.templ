@@ -295,22 +295,29 @@ templ ThemeToggle(theme string) {
 }
 
 templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
-	<div class="labbit-shell" style={ accentStyle(doc) } data-current-section={ currentSection } data-current-section-type={ currentSectionType(doc, currentSection) } data-search-url={ searchPath(doc) }>
+	<div class="labbit-shell sidebar-collapsed" style={ accentStyle(doc) } data-current-section={ currentSection } data-current-section-type={ currentSectionType(doc, currentSection) } data-search-url={ searchPath(doc) }>
 		<aside class="sidebar">
-			<a class="brand-mark" href={ templpkg.URL(viewerPath(doc)) } aria-label="Labbit home">
-				<img src="/assets/img/logo-mark-64.png" alt="" width="32" height="32"/>
-			</a>
-			<div class="sidebar-inner">
-				<div class="sidebar-top">
+			<div class="sidebar-top">
+				<a class="brand-mark" href={ templpkg.URL(viewerPath(doc)) } aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="32" height="32"/>
+				</a>
+				<div class="sidebar-title">
 					<span class="brand-text">
 						<strong>Labbit</strong>
 						<small>{ doc.Title }</small>
 					</span>
+				</div>
+				<div class="sidebar-actions">
+					<div class="sidebar-theme-mobile">
+						@ThemeToggle(theme)
+					</div>
 					<button class="icon-btn sidebar-toggle" type="button" data-toggle-sidebar aria-label="Toggle sidebar">
 						<span data-sidebar-collapse-icon>⇤</span>
 						<span data-sidebar-expand-icon>☰</span>
 					</button>
 				</div>
+			</div>
+			<div class="sidebar-inner">
 				<button class="search-trigger" type="button" data-open-search>Search <kbd>Ctrl K</kbd></button>
 				@DocumentNav(doc, currentSection, false)
 			</div>

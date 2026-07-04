@@ -63,6 +63,24 @@ func TestSectionFragmentIncludesOOBActiveNav(t *testing.T) {
 	}
 }
 
+func TestViewerShellIncludesMobileSidebarControls(t *testing.T) {
+	html := renderString(t, ViewerShell(templateDoc(), "overview", "dark"))
+	for _, want := range []string{
+		`class="labbit-shell sidebar-collapsed"`,
+		`class="sidebar-top"`,
+		`class="sidebar-actions"`,
+		`class="sidebar-theme-mobile"`,
+		`class="sidebar-inner"`,
+		`class="sidebar-bottom"`,
+		`data-toggle-sidebar`,
+		`data-theme-toggle`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("viewer shell missing %q: %s", want, html)
+		}
+	}
+}
+
 func TestLabTopicHydratesInlineHintControls(t *testing.T) {
 	doc := templateDoc()
 	html := renderString(t, LabTopicSection(doc, doc.Topics[0], ""))

@@ -10,6 +10,7 @@
   const searchOpen = () => !qs("[data-search-modal]")?.classList.contains("hidden");
   const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
   const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
+  const mobile = () => !matchMedia("(min-width: 64rem)").matches;
 
   function modal(name, open) {
     const el = qs(`[data-${name}-modal]`);
@@ -105,6 +106,20 @@
     if (button) button.disabled = !qsa("[data-quiz-option]", form).some((el) => el.checked);
   }
 
+  function updateThemeControls(theme) {
+    const next = theme === "light" ? "dark" : "light";
+    const label = theme === "light" ? "Switch to dark mode" : "Switch to light mode";
+    qsa(".theme-toggle-form").forEach((form) => {
+      const input = qs('input[name="theme"]', form);
+      const button = qs("[data-theme-toggle]", form);
+      if (input) input.value = next;
+      if (button) {
+        button.setAttribute("aria-label", label);
+        button.setAttribute("title", label);
+      }
+    });
+  }
+
   function updateSolutionToggle(button, open) {
     if (!button) return;
     const label = open ? "Hide Solution" : "Show Solution";
@@ -119,16 +134,29 @@
     if (!root) return;
     const width = Math.max(minRem, Math.min(maxRem, Number(localStorage.getItem("labbit.sidebar.width.rem")) || defaultRem));
     root.style.setProperty("--sidebar-expanded-width", `${width}rem`);
-    root.classList.toggle("sidebar-collapsed", localStorage.getItem("labbit.sidebar.collapsed") === "true");
+    root.classList.toggle("sidebar-collapsed", mobile() ? root.dataset.mobileSidebarOpen !== "true" : localStorage.getItem("labbit.sidebar.collapsed") === "true");
     root.style.setProperty("--sidebar-width", root.classList.contains("sidebar-collapsed") ? "var(--sidebar-rail-width)" : `${width}rem`);
   }
 
   function toggleSidebar(trigger) {
     const root = shell();
     if (!root) return;
+    if (mobile()) {
+      root.dataset.mobileSidebarOpen = root.classList.contains("sidebar-collapsed") ? "true" : "false";
+      trigger?.blur?.();
+      applySidebar();
+      return;
+    }
     root.classList.toggle("sidebar-collapsed");
     localStorage.setItem("labbit.sidebar.collapsed", String(root.classList.contains("sidebar-collapsed")));
     trigger?.blur?.();
+    applySidebar();
+  }
+
+  function closeMobileSidebar() {
+    const root = shell();
+    if (!root || !mobile()) return;
+    root.dataset.mobileSidebarOpen = "false";
     applySidebar();
   }
 
@@ -196,7 +224,10 @@
     const opener = event.target.closest("[data-open-search]");
     if (opener) return modal("search", true);
     const hxLink = event.target.closest("[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]");
-    if (hxLink) markPending(hxLink);
+    if (hxLink) {
+      markPending(hxLink);
+      closeMobileSidebar();
+    }
     if (event.target.closest("[data-close-search]")) modal("search", false);
 
     const selected = event.target.closest("[data-select-block], [data-inline-hint-toggle], [data-solution-toggle]");
@@ -263,10 +294,12 @@
   document.body.addEventListener("labbitThemeChanged", (event) => {
     const theme = event.detail?.theme === "light" ? "light" : "dark";
     document.documentElement.dataset.theme = theme;
+    updateThemeControls(theme);
   });
 
   document.addEventListener("DOMContentLoaded", () => {
     applySidebar();
+    updateThemeControls(document.documentElement.dataset.theme === "light" ? "light" : "dark");
     qsa("[data-quiz-card]").forEach(updateQuiz);
     qs("[data-action-block].selected")?.scrollIntoView({ block: "start" });
   });

@@ -121,16 +121,16 @@
     --sidebar-width: 18.75rem;
     --sidebar-expanded-width: 18.75rem;
     --sidebar-rail-width: 4.25rem;
-    @apply grid min-h-screen bg-black transition-[grid-template-columns] duration-200 ease-out lg:grid-cols-[var(--sidebar-width)_0.375rem_1fr];
+    @apply grid min-h-screen content-start bg-black transition-[grid-template-columns] duration-200 ease-out lg:grid-cols-[var(--sidebar-width)_1px_1fr];
   }
 
   .labbit-shell.sidebar-collapsed {
     --sidebar-width: var(--sidebar-rail-width);
-    @apply lg:grid-cols-[var(--sidebar-rail-width)_0_1fr];
+    @apply lg:grid-cols-[var(--sidebar-rail-width)_1px_1fr];
   }
 
   .sidebar {
-    @apply relative border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0 lg:border-r;
+    @apply sticky top-0 z-30 self-start border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0;
   }
 
   .sidebar-collapsed .sidebar {
@@ -138,21 +138,35 @@
   }
 
   .sidebar-collapsed .sidebar:hover {
-    @apply lg:border-r lg:border-zinc-800 lg:bg-black lg:shadow-2xl lg:shadow-black;
-    width: var(--sidebar-expanded-width);
+    @apply lg:bg-black lg:shadow-2xl lg:shadow-black;
   }
 
   .sidebar-resizer {
-    @apply hidden cursor-col-resize bg-zinc-950 transition hover:bg-zinc-800 lg:block;
+    @apply relative z-40 hidden h-screen w-1.5 cursor-col-resize bg-transparent transition-colors lg:block;
+    margin-left: calc((1px - 0.375rem) / 2);
+    margin-right: calc((1px - 0.375rem) / 2);
   }
 
   .sidebar-collapsed .sidebar-resizer {
-    @apply lg:hidden;
+    @apply lg:block;
+  }
+
+  .sidebar-resizer::before {
+    @apply absolute inset-y-0 left-1/2 w-px -translate-x-1/2;
+    content: "";
+    background: var(--border-muted);
+  }
+
+  .sidebar-resizer:hover {
+    background: transparent;
+  }
+
+  .sidebar-resizer:hover::before {
+    background: var(--accent);
   }
 
   .sidebar-top {
-    @apply grid items-center gap-2;
-    grid-template-columns: minmax(0, 1fr) 2rem;
+    @apply flex min-h-[4.25rem] items-center gap-3 px-4 py-3 lg:w-[var(--sidebar-expanded-width)];
   }
 
   .icon-btn {
@@ -172,24 +186,72 @@
   }
 
   .sidebar-inner {
-    @apply p-4 pt-4 transition-opacity duration-150 ease-out;
-    width: var(--sidebar-expanded-width);
-  }
-
-  .sidebar-top {
-    padding-left: 3rem;
+    @apply absolute left-0 right-0 top-full z-20 overflow-y-auto border-b px-4 pb-4 pt-4 shadow-2xl transition-[max-height,opacity,transform,padding] duration-200 ease-out lg:static lg:z-auto lg:border-b-0 lg:px-4 lg:pb-20 lg:pt-0 lg:shadow-none;
+    width: 100%;
+    max-height: calc(100dvh - 4.25rem);
+    background: var(--page-bg);
+    border-color: var(--border-muted);
   }
 
   .sidebar-collapsed .sidebar-inner {
-    @apply lg:pointer-events-none lg:invisible lg:opacity-0;
+    @apply pointer-events-none overflow-hidden pb-0 pt-0 opacity-0;
+    max-height: 0;
+    transform: translateY(-0.5rem);
   }
 
-  .sidebar-collapsed .sidebar:hover .sidebar-inner {
-    @apply lg:pointer-events-auto lg:visible lg:opacity-100;
+  .sidebar-title {
+    @apply min-w-0 flex-1;
+  }
+
+  .sidebar-actions {
+    @apply ml-auto flex shrink-0 items-center gap-2;
+  }
+
+  .sidebar-theme-mobile {
+    @apply lg:hidden;
+  }
+
+  .sidebar-collapsed .sidebar-top {
+    @apply lg:w-[var(--sidebar-rail-width)] lg:justify-center lg:px-0;
+  }
+
+  .sidebar-collapsed .sidebar-title,
+  .sidebar-collapsed .sidebar-actions {
+    @apply lg:pointer-events-none lg:invisible lg:hidden lg:opacity-0;
+  }
+
+  .sidebar-collapsed .sidebar:hover .sidebar-top {
+    @apply lg:w-[var(--sidebar-expanded-width)] lg:justify-start lg:px-4;
+  }
+
+  .sidebar-collapsed .sidebar:hover .sidebar-title,
+  .sidebar-collapsed .sidebar:hover .sidebar-actions {
+    @apply lg:pointer-events-auto lg:visible lg:flex lg:opacity-100;
+  }
+
+  @media (min-width: 64rem) {
+    .sidebar-inner {
+      max-height: calc(100vh - 4.25rem);
+      transform: none;
+      width: var(--sidebar-expanded-width);
+    }
+
+    .sidebar-collapsed .sidebar:hover {
+      width: var(--sidebar-expanded-width);
+    }
+
+    .sidebar-collapsed .sidebar:hover .sidebar-inner {
+      pointer-events: auto;
+      max-height: calc(100vh - 4.25rem);
+      padding-bottom: 5rem;
+      opacity: 1;
+      transform: none;
+      overflow-y: auto;
+    }
   }
 
   .brand-mark {
-    @apply absolute left-3 top-4 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded;
+    @apply flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded;
     background: var(--accent);
   }
 
@@ -206,7 +268,7 @@
   }
 
   .search-trigger {
-    @apply mt-5 flex w-full items-center justify-between rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-100;
+    @apply flex w-full items-center justify-between rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-400 hover:border-zinc-600 hover:text-zinc-100;
   }
 
   .search-trigger kbd {
@@ -585,15 +647,15 @@
   }
 
   .search-results {
-    @apply max-h-[60vh] overflow-y-auto p-2;
+    @apply flex max-h-[60vh] flex-col gap-1 overflow-y-auto p-2;
   }
 
   .search-result {
-    @apply block w-full rounded px-3 py-3 text-left hover:bg-zinc-900;
+    @apply block w-full rounded border border-transparent px-3 py-3 text-left hover:bg-zinc-900;
   }
 
   .search-result.active {
-    @apply bg-zinc-900 ring-1;
+    @apply bg-zinc-900 ring-1 ring-inset;
     --tw-ring-color: rgb(var(--accent-rgb) / 0.65);
   }
 
@@ -717,10 +779,9 @@
   }
 
   .sidebar-resizer {
-    background: var(--panel-solid);
+    background: transparent;
   }
 
-  .sidebar-resizer:hover,
   .nav-link:hover,
   .search-result:hover,
   .search-result.active {
@@ -740,7 +801,7 @@
   }
 
   .sidebar-bottom {
-    @apply absolute bottom-4 right-4 z-40 flex justify-end transition-[left,right,width] duration-200 ease-out;
+    @apply absolute bottom-4 right-4 z-40 hidden justify-end transition-[left,right,width] duration-200 ease-out lg:flex;
     width: 2.25rem;
   }
 
