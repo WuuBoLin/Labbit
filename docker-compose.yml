@@ -1,3 +1,6 @@
+# Copyright (C) 2026 WuuBoLin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 services:
   app:
     build:
@@ -6,12 +9,12 @@ services:
       target: prod
     restart: unless-stopped
     ports:
-      - ${PORT}:${PORT}
+      - ${HOST_PORT:-8080}:80
     environment:
-      APP_ENV: ${APP_ENV}
-      PORT: ${PORT}
-      DB_URL: ${DB_URL}
+      APP_ENV: ${APP_ENV:-prod}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      DB_URL: /data/labbit.db
     volumes:
-      - sqlite_bp:/app/db
+      - sqlite_bp:/data
 volumes:
   sqlite_bp:

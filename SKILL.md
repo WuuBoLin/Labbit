@@ -1,0 +1,1 @@
+cmd/web/assets/SKILL.md

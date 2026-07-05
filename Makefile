@@ -1,3 +1,6 @@
+# Labbit - Makefile
+# Copyright (C) 2026 WuuBoLin
+# SPDX-License-Identifier: GPL-3.0-or-later
 .DEFAULT_GOAL := all
 .PHONY: all build run test clean watch tailwind-install templ-install
 

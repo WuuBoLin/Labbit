@@ -8,10 +8,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,47 +27,85 @@ import (
 )
 
 const docsPrefix = "/docs"
+const docsPerPage = 20
 
 func docRoute(parts ...string) string {
 	return strings.Join(append([]string{docsPrefix}, parts...), "/")
 }
 
+func userDocRoute(parts ...string) string {
+	return strings.Join(append([]string{"/@:username", "docs"}, parts...), "/")
+}
+
 func docPath(doc *labbit.Document) string {
-	return docRoute(doc.UID, doc.Slug)
+	return fmt.Sprintf("/@%s/docs/%s/%s", doc.OwnerName, doc.UID, doc.Slug)
 }
 
 func (s *Server) RegisterRoutes() http.Handler {
+	if s.disableAuth {
+		s.ensureAuthDisabledUser()
+	} else {
+		s.ensureID()
+	}
 	e := echo.New()
 	e.Use(middleware.Recover())
 	e.Use(requestLogger)
+	e.Use(zstdCompression())
+	if s.disableAuth {
+		e.Use(s.authDisabledMiddleware)
+	} else {
+		e.Use(s.idMiddleware)
+	}
 
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{"https://*", "http://*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	cors := middleware.CORSConfig{
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		MaxAge:       300,
+	}
+	if s.disableAuth {
+		cors.AllowOrigins = []string{"*"}
+	} else {
+		cors.AllowOrigins = []string{s.id.origin}
+		cors.AllowCredentials = true
+	}
+	e.Use(middleware.CORSWithConfig(cors))
 
 	fileServer := staticCache(http.FileServer(http.FS(web.Files)))
 	e.GET("/assets/*", echo.WrapHandler(fileServer))
 
-	e.GET("/", s.uploadPageHandler)
+	e.GET("/", s.homeHandler)
 	e.GET("/favicon.ico", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/assets/img/favicon.ico")
 	})
 	e.GET("/apple-touch-icon.png", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/assets/img/icon-180.png")
 	})
-	e.POST("/i/theme", s.themeHandler)
-	e.POST("/i/upload", s.uploadHandler)
-	e.GET(docRoute(":uid"), s.docUIDRedirectHandler)
-	e.GET(docRoute(":uid", ":slug"), s.viewerHandler)
-	e.GET(docRoute(":uid", ":slug", "search"), s.searchHandler)
-	e.GET(docRoute(":uid", ":slug", "keys", "labs", ":task", ":hint"), s.inlineHintHandler)
-	e.GET(docRoute(":uid", ":slug", "keys", "labs", ":task"), s.solutionHandler)
-	e.POST(docRoute(":uid", ":slug", "keys", "quiz", ":question", "check"), s.quizCheckHandler)
-	e.GET(docRoute(":uid", ":slug", ":type", ":section"), s.sectionHandler)
+	e.PATCH("/i/theme", s.themeHandler)
+	e.POST("/i/upload", s.uploadHandler, s.requireActive)
+	e.GET("/i/library", s.docsPageHandler, s.requireActive)
+	e.DELETE("/i/library", s.docsBulkDeleteHandler, s.requireActive)
+	e.PUT("/i/library/:uid/:slug/visibility", s.docsVisibilityHandler, s.requireActive)
+	e.DELETE("/i/library/:uid/:slug", s.docsDeleteHandler, s.requireActive)
+	if !s.disableAuth {
+		e.GET("/i/onboarding", s.onboardingPageHandler, s.requireSession)
+		e.POST("/i/onboarding", s.onboardingHandler, s.requireSession)
+		e.GET("/id", s.idHandler)
+		e.GET("/id/authenticate", s.authenticateHandler, nextHandler)
+		e.POST("/id/authenticate", s.passkeyAuthenticateHandler, nextHandler)
+		e.GET("/id/register", s.registerRedirectHandler)
+		e.POST("/id/register", s.passkeyRegisterHandler, nextHandler)
+		e.GET("/id/signout", s.signoutPageHandler, nextHandler)
+		e.POST("/id/signout", s.signoutHandler, nextHandler)
+		e.GET("/id/oidc/:provider/start", s.oidcStartHandler)
+		e.GET("/id/oidc/:provider/callback", s.oidcCallbackHandler)
+	}
+	e.GET("/@:username", s.userPageHandler)
+	e.GET(userDocRoute(":uid", ":slug"), s.viewerHandler)
+	e.GET(userDocRoute(":uid", ":slug", "search"), s.searchHandler)
+	e.GET(userDocRoute(":uid", ":slug", "keys", "labs", ":task", ":hint"), s.inlineHintHandler)
+	e.GET(userDocRoute(":uid", ":slug", "keys", "labs", ":task"), s.solutionHandler)
+	e.POST(userDocRoute(":uid", ":slug", "keys", "quiz", ":question", "check"), s.quizCheckHandler)
+	e.GET(userDocRoute(":uid", ":slug", ":type", ":section"), s.sectionHandler)
 
 	e.GET("/_/healthz", s.healthHandler)
 
@@ -73,11 +114,248 @@ func (s *Server) RegisterRoutes() http.Handler {
 	return e
 }
 
-func (s *Server) uploadPageHandler(c echo.Context) error {
-	return render(c, http.StatusOK, web.UploadPage("", requestTheme(c)))
+func (s *Server) homeHandler(c echo.Context) error {
+	user := currentUser(c)
+	if user != nil && user.Status != labbit.UserStatusActive {
+		return s.redirectToOnboarding(c)
+	}
+	if user == nil {
+		return render(c, http.StatusOK, web.HomePage(nil, nil, "", requestTheme(c), c.QueryParam("next"), s.oidcButtons(), s.disableAuth))
+	}
+	page := 1
+	recent, err := s.labs.GetRecentDocuments(c.Request().Context(), user.ID, page, 10)
+	if err != nil {
+		return err
+	}
+	return render(c, http.StatusOK, web.HomePage(user, recent, "", requestTheme(c), "", s.oidcButtons(), s.disableAuth))
+}
+
+func (s *Server) docsPageHandler(c echo.Context) error {
+	user := currentUser(c)
+	page := parsePage(c.QueryParam("page"))
+	query := requestLibraryQuery(c)
+	docs, hasNext, err := s.loadDocsPage(c.Request().Context(), user.ID, page, query)
+	if err != nil {
+		return err
+	}
+	if page > 1 && len(docs) == 0 {
+		page = 1
+		docs, hasNext, err = s.loadDocsPage(c.Request().Context(), user.ID, page, query)
+		if err != nil {
+			return err
+		}
+		if !isHTMX(c) {
+			return c.Redirect(http.StatusSeeOther, docsLibraryPath(page, query))
+		}
+		c.Response().Header().Set("HX-Push-Url", docsLibraryPath(page, query))
+	}
+	if isHTMX(c) {
+		c.Response().Header().Set("HX-Push-Url", docsLibraryPath(page, query))
+		return render(c, http.StatusOK, web.DocsListFragment(docs, page, hasNext, query, ""))
+	}
+	return render(c, http.StatusOK, web.DocsPage(user, docs, page, hasNext, query, requestTheme(c), s.disableAuth))
+}
+
+func (s *Server) userPageHandler(c echo.Context) error {
+	username := c.Param("username")
+	profileUser, err := s.labs.GetUserByUsername(c.Request().Context(), username)
+	if err != nil || profileUser == nil || profileUser.Status != labbit.UserStatusActive {
+		return echo.NewHTTPError(http.StatusNotFound, "user not found")
+	}
+	visitor := currentUser(c)
+	page := parsePage(c.QueryParam("page"))
+	query := requestLibraryQuery(c)
+	ownerView := visitor != nil && visitor.ID == profileUser.ID
+	loadPage := s.loadPublicDocsPage
+	if ownerView {
+		loadPage = s.loadDocsPage
+	}
+	docs, hasNext, err := loadPage(c.Request().Context(), profileUser.ID, page, query)
+	if err != nil {
+		return err
+	}
+	if page > 1 && len(docs) == 0 {
+		page = 1
+		docs, hasNext, err = loadPage(c.Request().Context(), profileUser.ID, page, query)
+		if err != nil {
+			return err
+		}
+		if !isHTMX(c) {
+			return c.Redirect(http.StatusSeeOther, userLibraryPath(profileUser.Username, page, query))
+		}
+		c.Response().Header().Set("HX-Push-Url", userLibraryPath(profileUser.Username, page, query))
+	}
+	if isHTMX(c) {
+		c.Response().Header().Set("HX-Push-Url", userLibraryPath(profileUser.Username, page, query))
+		return render(c, http.StatusOK, web.UserDocsListFragment(profileUser, docs, page, hasNext, query, ownerView))
+	}
+	return render(c, http.StatusOK, web.UserPage(profileUser, visitor, docs, page, hasNext, query, requestTheme(c), s.disableAuth))
+}
+
+func (s *Server) docsVisibilityHandler(c echo.Context) error {
+	if err := s.labs.SetUserDocumentVisibility(c.Request().Context(), currentUser(c).ID, c.Param("uid"), c.Param("slug"), c.FormValue("visibility")); err != nil {
+		if errors.Is(err, labbit.ErrNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "lab not found")
+		}
+		return err
+	}
+	return s.renderDocsListAfterAction(c, requestPage(c))
+}
+
+func (s *Server) docsDeleteHandler(c echo.Context) error {
+	if err := s.labs.DeleteUserDocument(c.Request().Context(), currentUser(c).ID, c.Param("uid"), c.Param("slug")); err != nil {
+		if errors.Is(err, labbit.ErrNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "lab not found")
+		}
+		return err
+	}
+	return s.renderDocsListAfterAction(c, requestPage(c))
+}
+
+func (s *Server) docsBulkDeleteHandler(c echo.Context) error {
+	values, err := deleteFormValues(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid library action")
+	}
+	page := parsePage(values.Get("page"))
+	query := strings.TrimSpace(values.Get("q"))
+	selected := values["doc"]
+	if len(selected) == 0 {
+		return s.renderDocsListAfterActionWithNotice(c, page, query, "Select at least one doc to delete.")
+	}
+	if _, err := s.labs.DeleteUserDocuments(c.Request().Context(), currentUser(c).ID, selected); err != nil {
+		return err
+	}
+	return s.renderDocsListAfterActionWithNotice(c, page, query, "")
+}
+
+func (s *Server) renderDocsListAfterAction(c echo.Context, page int) error {
+	return s.renderDocsListAfterActionWithNotice(c, page, requestLibraryQuery(c), "")
+}
+
+func (s *Server) renderDocsListAfterActionWithNotice(c echo.Context, page int, query string, notice string) error {
+	docs, hasNext, err := s.loadDocsPage(c.Request().Context(), currentUser(c).ID, page, query)
+	if err != nil {
+		return err
+	}
+	for page > 1 && len(docs) == 0 {
+		page--
+		docs, hasNext, err = s.loadDocsPage(c.Request().Context(), currentUser(c).ID, page, query)
+		if err != nil {
+			return err
+		}
+	}
+	target := docsLibraryPath(page, query)
+	if isHTMX(c) {
+		c.Response().Header().Set("HX-Push-Url", target)
+		return render(c, http.StatusOK, web.DocsListFragment(docs, page, hasNext, query, notice))
+	}
+	return c.Redirect(http.StatusSeeOther, target)
+}
+
+func (s *Server) loadDocsPage(ctx context.Context, userID string, page int, query string) ([]labbit.RecentDocument, bool, error) {
+	docs, err := s.labs.ListUserDocumentsFiltered(ctx, userID, page, docsPerPage+1, query)
+	if err != nil {
+		return nil, false, err
+	}
+	hasNext := len(docs) > docsPerPage
+	if hasNext {
+		docs = docs[:docsPerPage]
+	}
+	return docs, hasNext, nil
+}
+
+func (s *Server) loadPublicDocsPage(ctx context.Context, userID string, page int, query string) ([]labbit.RecentDocument, bool, error) {
+	docs, err := s.labs.ListPublicUserDocumentsFiltered(ctx, userID, page, docsPerPage+1, query)
+	if err != nil {
+		return nil, false, err
+	}
+	hasNext := len(docs) > docsPerPage
+	if hasNext {
+		docs = docs[:docsPerPage]
+	}
+	return docs, hasNext, nil
+}
+
+func requestLibraryQuery(c echo.Context) string {
+	if query := strings.TrimSpace(c.FormValue("q")); query != "" {
+		return query
+	}
+	return strings.TrimSpace(c.QueryParam("q"))
+}
+
+func requestPage(c echo.Context) int {
+	if page := strings.TrimSpace(c.FormValue("page")); page != "" {
+		return parsePage(page)
+	}
+	return parsePage(c.QueryParam("page"))
+}
+
+func parsePage(raw string) int {
+	page, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
+}
+
+func docsLibraryPath(page int, query string) string {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if page > 1 {
+		values.Set("page", fmt.Sprintf("%d", page))
+	}
+	if len(values) == 0 {
+		return "/i/library"
+	}
+	return "/i/library?" + values.Encode()
+}
+
+func userLibraryPath(username string, page int, query string) string {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if page > 1 {
+		values.Set("page", fmt.Sprintf("%d", page))
+	}
+	base := "/@" + username
+	if len(values) == 0 {
+		return base
+	}
+	return base + "?" + values.Encode()
+}
+
+func isHTMX(c echo.Context) bool {
+	return c.Request().Header.Get("HX-Request") == "true"
+}
+
+func deleteFormValues(c echo.Context) (url.Values, error) {
+	values := url.Values{}
+	for key, existing := range c.QueryParams() {
+		values[key] = append(values[key], existing...)
+	}
+	if !strings.HasPrefix(c.Request().Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		return values, nil
+	}
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := url.ParseQuery(string(body))
+	if err != nil {
+		return nil, err
+	}
+	for key, existing := range parsed {
+		values[key] = append(values[key], existing...)
+	}
+	return values, nil
 }
 
 func (s *Server) uploadHandler(c echo.Context) error {
+	user := currentUser(c)
 	file, err := c.FormFile("labfile")
 	if err != nil {
 		slog.Warn("upload missing lab file", "remote_addr", c.RealIP())
@@ -101,9 +379,16 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	}
 	hash := fileHash(body)
 	if existing, err := s.labs.GetDocumentByHash(c.Request().Context(), hash); err == nil {
-		slog.Info("duplicate lab upload reused", "uid", existing.UID, "slug", existing.Slug, "filename", file.Filename)
-		c.Response().Header().Set("HX-Push-Url", docPath(existing))
-		return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
+		if err := s.labs.SaveUserDocument(c.Request().Context(), user.ID, existing.ID, labbit.NormalizeVisibility(c.FormValue("visibility"))); err != nil {
+			return err
+		}
+		doc, err := s.labs.GetUserDocument(c.Request().Context(), user.Username, existing.UID, existing.Slug)
+		if err != nil {
+			return err
+		}
+		slog.Info("duplicate lab upload reused", "uid", doc.UID, "slug", doc.Slug, "filename", file.Filename, "user", user.Username)
+		c.Response().Header().Set("HX-Push-Url", docPath(doc))
+		return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
 	}
 
 	doc, err := labbit.Parse(bytes.NewReader(body))
@@ -116,14 +401,28 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	if err := s.labs.SaveDocument(c.Request().Context(), doc); err != nil {
 		slog.Error("lab save failed", "uid", doc.UID, "slug", doc.Slug, "error", err)
 		if existing, lookupErr := s.labs.GetDocumentByHash(c.Request().Context(), hash); lookupErr == nil {
-			c.Response().Header().Set("HX-Push-Url", docPath(existing))
-			return render(c, http.StatusOK, web.ViewerPage(existing, requestTheme(c)))
+			if err := s.labs.SaveUserDocument(c.Request().Context(), user.ID, existing.ID, labbit.NormalizeVisibility(c.FormValue("visibility"))); err != nil {
+				return err
+			}
+			doc, err := s.labs.GetUserDocument(c.Request().Context(), user.Username, existing.UID, existing.Slug)
+			if err != nil {
+				return err
+			}
+			c.Response().Header().Set("HX-Push-Url", docPath(doc))
+			return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
 		}
 		return s.renderUploadError(c, http.StatusInternalServerError, "The lab could not be saved.")
 	}
-	slog.Info("lab uploaded", "uid", doc.UID, "slug", doc.Slug, "title", doc.Title, "filename", file.Filename)
+	if err := s.labs.SaveUserDocument(c.Request().Context(), user.ID, doc.ID, labbit.NormalizeVisibility(c.FormValue("visibility"))); err != nil {
+		return err
+	}
+	doc, err = s.labs.GetUserDocument(c.Request().Context(), user.Username, doc.UID, doc.Slug)
+	if err != nil {
+		return err
+	}
+	slog.Info("lab uploaded", "uid", doc.UID, "slug", doc.Slug, "title", doc.Title, "filename", file.Filename, "user", user.Username)
 	c.Response().Header().Set("HX-Push-Url", docPath(doc))
-	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c)))
+	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
 }
 
 func (s *Server) renderUploadError(c echo.Context, status int, message string) error {
@@ -132,7 +431,12 @@ func (s *Server) renderUploadError(c echo.Context, status int, message string) e
 		c.Response().Header().Set("HX-Reswap", "innerHTML")
 		return render(c, http.StatusOK, web.UploadError(message))
 	}
-	return render(c, status, web.UploadPage(message, requestTheme(c)))
+	user := currentUser(c)
+	var recent []labbit.RecentDocument
+	if user != nil && user.Status == labbit.UserStatusActive {
+		recent, _ = s.labs.GetRecentDocuments(c.Request().Context(), user.ID, 1, 10)
+	}
+	return render(c, status, web.HomePage(user, recent, message, requestTheme(c), "", s.oidcButtons(), s.disableAuth))
 }
 
 func fileHash(body []byte) string {
@@ -161,7 +465,10 @@ func (s *Server) viewerHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c)))
+	if doc == nil {
+		return nil
+	}
+	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
 }
 
 func (s *Server) sectionHandler(c echo.Context) error {
@@ -169,13 +476,16 @@ func (s *Server) sectionHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if doc == nil {
+		return nil
+	}
 	section := c.Param("section")
 	sectionType := c.Param("type")
 	if c.Request().Header.Get("HX-Request") != "true" {
 		if !sectionExists(doc, sectionType, section) {
 			return echo.NewHTTPError(http.StatusNotFound, "section not found")
 		}
-		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c)))
+		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c), currentUser(c), s.disableAuth))
 	}
 	return renderSection(c, doc, sectionType, section, c.QueryParam("block"))
 }
@@ -191,7 +501,7 @@ func (s *Server) themeHandler(c echo.Context) error {
 		HttpOnly: true,
 	})
 	c.Response().Header().Set("HX-Trigger", fmt.Sprintf(`{"labbitThemeChanged":{"theme":"%s"}}`, theme))
-	return render(c, http.StatusOK, web.ThemeToggle(theme))
+	return render(c, http.StatusOK, web.ThemeToggleResponse(theme, c.FormValue("slot")))
 }
 
 func renderSection(c echo.Context, doc *labbit.Document, sectionType, section, selectedBlock string) error {
@@ -220,6 +530,9 @@ func (s *Server) solutionHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if doc == nil {
+		return nil
+	}
 	task, err := s.labs.GetSolution(c.Request().Context(), doc.ID, c.Param("task"))
 	if err != nil {
 		slog.Warn("solution not found", "uid", doc.UID, "task", c.Param("task"))
@@ -234,6 +547,9 @@ func (s *Server) inlineHintHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if doc == nil {
+		return nil
+	}
 	hint, err := s.labs.GetHint(c.Request().Context(), doc.ID, c.Param("task"), c.Param("hint"))
 	if err != nil {
 		slog.Warn("inline hint not found", "uid", doc.UID, "task", c.Param("task"), "hint", c.Param("hint"))
@@ -247,6 +563,9 @@ func (s *Server) quizCheckHandler(c echo.Context) error {
 	doc, err := s.loadDocument(c)
 	if err != nil {
 		return err
+	}
+	if doc == nil {
+		return nil
 	}
 	if err := c.Request().ParseForm(); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid quiz submission")
@@ -276,6 +595,9 @@ func (s *Server) searchHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if doc == nil {
+		return nil
+	}
 	results, err := s.labs.Search(c.Request().Context(), doc.ID, c.QueryParam("q"))
 	if err != nil {
 		slog.Error("search failed", "uid", doc.UID, "query", c.QueryParam("q"), "error", err)
@@ -286,9 +608,16 @@ func (s *Server) searchHandler(c echo.Context) error {
 }
 
 func (s *Server) loadDocument(c echo.Context) (*labbit.Document, error) {
-	doc, err := s.labs.GetDocument(c.Request().Context(), c.Param("uid"), c.Param("slug"))
+	doc, err := s.labs.GetUserDocument(c.Request().Context(), c.Param("username"), c.Param("uid"), c.Param("slug"))
 	if err != nil {
-		slog.Warn("lab not found", "uid", c.Param("uid"), "slug", c.Param("slug"))
+		slog.Warn("lab not found", "username", c.Param("username"), "uid", c.Param("uid"), "slug", c.Param("slug"))
+		return nil, echo.NewHTTPError(http.StatusNotFound, "lab not found")
+	}
+	user := currentUser(c)
+	if !s.canReadDocument(user, doc) {
+		if user == nil {
+			return nil, s.redirectToSignin(c)
+		}
 		return nil, echo.NewHTTPError(http.StatusNotFound, "lab not found")
 	}
 	return doc, nil

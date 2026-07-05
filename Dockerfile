@@ -1,3 +1,6 @@
+# Copyright (C) 2026 WuuBoLin
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 FROM golang:1.26.4-alpine AS build
 RUN apk add --no-cache curl libstdc++ libgcc alpine-sdk
 
@@ -17,6 +20,11 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o labbit cmd/api/main.go
 
 FROM alpine:3.20.1 AS prod
 WORKDIR /app
+RUN apk add --no-cache ca-certificates libstdc++ libgcc && mkdir -p /data
 COPY --from=build /app/labbit /app/labbit
-EXPOSE ${PORT}
+ENV BIND=0.0.0.0
+ENV PORT=80
+ENV DB_URL=/data/labbit.db
+VOLUME ["/data"]
+EXPOSE 80
 CMD ["./labbit"]

@@ -152,6 +152,52 @@ CREATE TABLE IF NOT EXISTS search_entries (
 	title TEXT NOT NULL,
 	body TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+	id TEXT PRIMARY KEY,
+	username TEXT UNIQUE,
+	username_normalized TEXT UNIQUE,
+	status TEXT NOT NULL DEFAULT 'pending',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+	token_hash TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	expires_at TEXT NOT NULL,
+	revoked_at TEXT
+);
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+	credential_id TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	credential_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oidc_identities (
+	provider TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	user_id TEXT NOT NULL,
+	username_claim TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY(provider, subject)
+);
+CREATE TABLE IF NOT EXISTS auth_challenges (
+	nonce TEXT PRIMARY KEY,
+	kind TEXT NOT NULL,
+	user_id TEXT,
+	payload TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_documents (
+	user_id TEXT NOT NULL,
+	document_id INTEGER NOT NULL,
+	visibility TEXT NOT NULL DEFAULT 'public',
+	uploaded_at TEXT NOT NULL,
+	PRIMARY KEY(user_id, document_id)
+);
 `)
 	if err != nil {
 		return err
@@ -165,7 +211,23 @@ CREATE TABLE IF NOT EXISTS search_entries (
 	if err := s.addUniqueIndexIfMissing(ctx, "idx_documents_content_hash", "documents", "content_hash"); err != nil {
 		return err
 	}
-	return s.addColumnIfMissing(ctx, "task_hints", "kind", "TEXT NOT NULL DEFAULT 'hint'")
+	if err := s.addColumnIfMissing(ctx, "task_hints", "kind", "TEXT NOT NULL DEFAULT 'hint'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing(ctx, "users", "username_normalized", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing(ctx, "users", "status", "TEXT NOT NULL DEFAULT 'pending'"); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_normalized ON users(username_normalized) WHERE username_normalized IS NOT NULL AND username_normalized != '';
+CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_documents_user_uploaded ON user_documents(user_id, uploaded_at);
+CREATE INDEX IF NOT EXISTS idx_user_documents_document ON user_documents(document_id);
+`)
+	return err
 }
 
 func (s *Store) addColumnIfMissing(ctx context.Context, table, column, definition string) error {

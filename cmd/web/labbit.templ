@@ -1,3 +1,6 @@
+// Copyright (C) 2026 WuuBoLin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package web
 
 import (
@@ -15,7 +18,7 @@ import (
 const docsPrefix = "/docs"
 
 func viewerPath(doc *labbit.Document) string {
-	return fmt.Sprintf("%s/%s/%s", docsPrefix, doc.UID, doc.Slug)
+	return fmt.Sprintf("/@%s%s/%s/%s", doc.OwnerName, docsPrefix, doc.UID, doc.Slug)
 }
 
 func sectionPath(doc *labbit.Document, sectionType, section string) templpkg.SafeURL {
@@ -43,6 +46,64 @@ func quizCheckPath(doc *labbit.Document, questionID string) templpkg.SafeURL {
 
 func searchPath(doc *labbit.Document) templpkg.SafeURL {
 	return templpkg.URL(fmt.Sprintf("%s/search", viewerPath(doc)))
+}
+
+func docsPagePath(page int, query string) string {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if page > 1 {
+		values.Set("page", fmt.Sprintf("%d", page))
+	}
+	if len(values) == 0 {
+		return "/i/library"
+	}
+	return "/i/library?" + values.Encode()
+}
+
+func docsActionPath(doc *labbit.Document, action string, page int, query string) templpkg.SafeURL {
+	if page < 1 {
+		page = 1
+	}
+	values := url.Values{"page": {fmt.Sprintf("%d", page)}}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	return templpkg.URL(fmt.Sprintf("/i/library/%s/%s/%s?%s", url.PathEscape(doc.UID), url.PathEscape(doc.Slug), action, values.Encode()))
+}
+
+func docsResourcePath(doc *labbit.Document, page int, query string) templpkg.SafeURL {
+	if page < 1 {
+		page = 1
+	}
+	values := url.Values{"page": {fmt.Sprintf("%d", page)}}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	return templpkg.URL(fmt.Sprintf("/i/library/%s/%s?%s", url.PathEscape(doc.UID), url.PathEscape(doc.Slug), values.Encode()))
+}
+
+func userLibraryPath(username string, page int, query string) string {
+	values := url.Values{}
+	if strings.TrimSpace(query) != "" {
+		values.Set("q", strings.TrimSpace(query))
+	}
+	if page > 1 {
+		values.Set("page", fmt.Sprintf("%d", page))
+	}
+	base := "/@" + username
+	if len(values) == 0 {
+		return base
+	}
+	return base + "?" + values.Encode()
+}
+
+func nextAction(path string, next string) templpkg.SafeURL {
+	if next == "" {
+		return templpkg.URL(path)
+	}
+	return templpkg.URL(path + "?next=" + url.QueryEscape(next))
 }
 
 func questionInputType(kind string) string {
@@ -74,6 +135,13 @@ func navLinkClass(currentSection, id string) string {
 		return "nav-link active"
 	}
 	return "nav-link"
+}
+
+func sidebarBottomClass(signedIn bool) string {
+	if signedIn {
+		return "sidebar-bottom has-signout"
+	}
+	return "sidebar-bottom"
 }
 
 func optionChecked(id string, selected []string) bool {
@@ -160,6 +228,7 @@ func safeHTML(html string) templpkg.Component {
 }
 
 var inlineHintButtonRE = regexp.MustCompile(`<button class="inline-hint-toggle" type="button" data-inline-hint-toggle data-task-id="([^"]+)" data-hint-id="([^"]+)" aria-label="Reveal inline hint">`)
+
 const inlineHintSwapAttr = ` hx-` + `swap="outerHTML"`
 
 func taskPromptHTML(doc *labbit.Document, prompt string) string {
@@ -202,6 +271,141 @@ func themeLabel(theme string) string {
 	return "Switch to light mode"
 }
 
+func recentDate(doc labbit.RecentDocument) string {
+	if doc.UploadedAt.IsZero() {
+		return ""
+	}
+	return doc.UploadedAt.Format("Jan 2, 2006")
+}
+
+func accountLabel(user *labbit.User) string {
+	if user == nil {
+		return ""
+	}
+	if user.Status == labbit.UserStatusActive && user.Username != "" {
+		return "@" + user.Username
+	}
+	return "New account"
+}
+
+func visibilityOptionClass(current string, option string) string {
+	base := "visibility-option " + option
+	if current == option {
+		return base + " active"
+	}
+	return base
+}
+
+func userDocsRowClass(item labbit.RecentDocument) string {
+	if item.Visibility == labbit.VisibilityPrivate {
+		return "user-docs-row private"
+	}
+	return "user-docs-row"
+}
+
+type OIDCButton struct {
+	Name        string
+	DisplayName string
+}
+
+templ IDPanelHeader(eyebrow string, title string, icon string) {
+	<div class="id-panel-header">
+		<div class="id-icon-tile" aria-hidden="true">
+			if icon == "lock" {
+				<svg viewBox="0 0 24 24">
+					<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+					<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+				</svg>
+			} else if icon == "user" {
+				<svg viewBox="0 0 24 24">
+					<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+					<circle cx="12" cy="7" r="4"></circle>
+				</svg>
+			} else if icon == "signout" {
+				@SignOutIcon()
+			} else {
+				<img src="/assets/img/logo-mark-64.png" alt="" width="48" height="48"/>
+			}
+		</div>
+		<div class="id-panel-copy">
+			<p class="accent-text">{ eyebrow }</p>
+			<h2>{ title }</h2>
+		</div>
+	</div>
+}
+
+templ SignOutIcon() {
+	<svg viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+		<path d="M16 17l5-5-5-5"></path>
+		<path d="M21 12H9"></path>
+	</svg>
+}
+
+templ TrashIcon() {
+	<svg viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M3 6h18"></path>
+		<path d="M8 6V4h8v2"></path>
+		<path d="M19 6l-1 14H6L5 6"></path>
+		<path d="M10 11v5"></path>
+		<path d="M14 11v5"></path>
+	</svg>
+}
+
+templ ArrowRightIcon() {
+	<svg viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M5 12h14"></path>
+		<path d="m13 6 6 6-6 6"></path>
+	</svg>
+}
+
+templ CloseIcon() {
+	<svg viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M6 6l12 12"></path>
+		<path d="M18 6l-12 12"></path>
+	</svg>
+}
+
+templ AccountChip(user *labbit.User, showSignout bool, popoverPos string, signoutNext string, signoutPage bool) {
+	if user != nil {
+		<div class="account-menu-wrapper group relative inline-flex justify-center">
+			if user.Status == labbit.UserStatusActive && user.Username != "" {
+				<a class="account-chip" data-account-chip href={ templpkg.URL("/@" + user.Username) }>{ accountLabel(user) }</a>
+			} else {
+				<span class="account-chip" data-account-chip>{ accountLabel(user) }</span>
+			}
+			if showSignout {
+				<div
+					class={ "absolute z-50 flex items-center h-full top-0 opacity-0 pointer-events-none transition-all duration-200 ease-out group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0",
+					templ.KV("right-full pr-1.5 translate-x-2", popoverPos == "left"),
+					templ.KV("left-full pl-1.5 -translate-x-2", popoverPos == "right") }
+				>
+					if signoutPage {
+						<a class="icon-btn signout-icon shadow-md bg-zinc-950 border border-zinc-800 hover:border-accent hover:text-accent" href="/id/signout" aria-label="Sign out" title="Sign out">
+							@SignOutIcon()
+						</a>
+					} else {
+						<form class="signout-icon-form" hx-post={ nextAction("/id/signout", signoutNext) } method="post">
+							<button type="submit" class="icon-btn signout-icon shadow-md bg-zinc-950 border border-zinc-800 hover:border-accent hover:text-accent" aria-label="Sign out" title="Sign out">
+								@SignOutIcon()
+							</button>
+						</form>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+templ HeaderControls(user *labbit.User, theme string, showSignout bool, signoutNext string, themeSlot string) {
+	<div class="account-actions">
+		if user != nil {
+			@AccountChip(user, showSignout, "left", signoutNext, false)
+		}
+		@ThemeToggle(theme, themeSlot)
+	</div>
+}
+
 templ DocumentNav(doc *labbit.Document, currentSection string, oob bool) {
 	if oob {
 		<nav id="document-nav" class="nav-list" aria-label="Document" hx-swap-oob="outerHTML">
@@ -231,25 +435,437 @@ templ DocumentNavLinks(doc *labbit.Document, currentSection string) {
 }
 
 templ UploadPage(errorMessage string, theme string) {
+	@HomePage(nil, nil, errorMessage, theme, "", nil, false)
+}
+
+templ HomePage(user *labbit.User, recent []labbit.RecentDocument, errorMessage string, theme string, next string, providers []OIDCButton, authDisabled bool) {
 	@Base("Labbit", theme) {
-		<div class="min-h-screen px-5 py-6 lg:px-8">
-			<section class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.75fr_1.25fr]">
-				<div class="pt-8">
-					<p class="accent-text text-xs font-semibold uppercase tracking-[0.24em]">Labbit</p>
-					<h1 class="mt-4 max-w-xl text-4xl font-semibold leading-tight text-zinc-50">Lab and exam question viewer</h1>
-					<p class="mt-5 max-w-xl text-base leading-7 text-zinc-400">Upload a Labbit XML file to create a clean workspace for lab tasks, keys, solutions, and quizzes.</p>
+		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-5xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				if authDisabled {
+					@HeaderControls(nil, theme, false, "", "home-header")
+				} else {
+					@HeaderControls(user, theme, user != nil, "", "home-header")
+				}
+			</header>
+			<section class="home-layout mx-auto mt-12 grid max-w-5xl gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:gap-x-12 lg:gap-y-6">
+				<div class="home-copy lg:self-start">
+					<h1>Lab and Quiz viewer</h1>
+					@SkillResourceBox()
 				</div>
-				<form class="upload-panel" method="post" enctype="multipart/form-data" hx-post="/i/upload" hx-target="body" hx-swap="outerHTML">
-					<div>
-						<label for="labfile" class="block text-sm font-medium text-zinc-200">Lab file</label>
-						<input id="labfile" name="labfile" type="file" accept=".xml,.md,.labbit,text/xml,text/markdown" required class="upload-file mt-3 block w-full rounded border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-200"/>
+				if user == nil || user.Status != "active" {
+					<div class="lg:self-start">
+						@SignInPanel(next, providers)
 					</div>
-					<div id="upload-error" aria-live="polite">
-						@UploadError(errorMessage)
+				} else {
+					<div class="home-workspace lg:self-start">
+						@UploadPanel(errorMessage)
 					</div>
-					<button class="primary-btn" type="submit">Upload lab</button>
-				</form>
+					if len(recent) > 0 {
+						<div class="lg:col-start-2">
+							@RecentDocuments(user, recent)
+						</div>
+					}
+				}
 			</section>
+		</div>
+	}
+}
+
+templ SkillResourceBox() {
+	<div class="skill-resource-box group relative overflow-hidden transition-all duration-300" aria-label="SKILL.md prompt file">
+		<div class="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/10 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+		<div class="skill-resource-file relative z-10">
+			<div class="skill-file-badge shadow-inner">
+				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+			</div>
+			<div class="flex flex-col min-w-0">
+				<a href="/assets/SKILL.md" class="transition-colors">SKILL.md</a>
+				<span>Use with AI agents to generate Labbit XML.</span>
+			</div>
+		</div>
+		<div class="skill-resource-actions relative z-10">
+			<a class="skill-btn-primary" href="/assets/SKILL.md" download="SKILL.md">
+				<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+				Download
+			</a>
+			<button class="skill-btn-secondary" type="button" data-copy data-copy-url="/assets/SKILL.md">
+				<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+				Copy
+			</button>
+		</div>
+	</div>
+}
+
+templ SignInPage(theme string, next string, providers []OIDCButton) {
+	@Base("Sign in - Labbit", theme) {
+		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-3xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				@HeaderControls(nil, theme, false, "", "signin-header")
+			</header>
+			<section class="id-panel-frame">
+				@SignInPanel(next, providers)
+			</section>
+		</div>
+	}
+}
+
+templ SignInPanel(next string, providers []OIDCButton) {
+	<section class="id-panel sign-in-panel" data-id-panel data-next={ next }>
+		@IDPanelHeader("Sign in", "Continue to Labbit", "lock")
+		<div class="id-actions">
+			<button class="primary-btn group" type="button" data-passkey-signin>
+				<svg class="mr-2 h-4 w-4 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+				<span>Sign in with passkey</span>
+			</button>
+			<button class="secondary-btn group" type="button" data-passkey-register>
+				<svg class="mr-2 h-4 w-4 text-zinc-400 transition-transform group-hover:scale-110 group-hover:text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" x2="19" y1="8" y2="14"></line><line x1="22" x2="16" y1="11" y2="11"></line></svg>
+				<span>Create a passkey</span>
+			</button>
+			<p class="id-status" data-id-status aria-live="polite"></p>
+		</div>
+		if len(providers) > 0 {
+			<div class="relative my-1 flex items-center justify-center">
+				<div class="absolute inset-0 flex items-center"><span class="w-full border-t border-zinc-800"></span></div>
+				<span class="relative bg-zinc-950 px-3 text-xs font-medium text-zinc-500">or</span>
+			</div>
+			<div class="oidc-actions">
+				for _, provider := range providers {
+					<a class="secondary-btn" href={ templpkg.URL("/id/oidc/" + provider.Name + "/start?next=" + url.QueryEscape(next)) }>Continue with { provider.DisplayName }</a>
+				}
+			</div>
+		}
+	</section>
+}
+
+templ SignOutPage(user *labbit.User, theme string, next string, cancel string) {
+	@Base("Sign out - Labbit", theme) {
+		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-3xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				@HeaderControls(user, theme, user != nil, "/", "signout-header")
+			</header>
+			<form class="id-panel id-panel-frame" method="post" action={ nextAction("/id/signout", next) }>
+				@IDPanelHeader("Sign out", "End this session", "signout")
+				<div class="id-actions">
+					<button class="primary-btn" type="submit">Sign out</button>
+					if cancel != "" {
+						<a class="secondary-btn" href={ templpkg.URL(cancel) }>Cancel</a>
+					} else {
+						<button class="secondary-btn" type="button" onclick="history.back()">Cancel</button>
+					}
+				</div>
+			</form>
+		</div>
+	}
+}
+
+templ UploadPanel(errorMessage string) {
+	<form class="upload-panel" method="post" enctype="multipart/form-data" hx-post="/i/upload" hx-target="body" hx-swap="outerHTML">
+		<div>
+			<label for="labfile" class="accent-text block text-xs font-semibold uppercase tracking-[0.18em]">Lab file</label>
+			<input id="labfile" name="labfile" type="file" accept=".xml,.md,.labbit,text/xml,text/markdown" required class="upload-file mt-3 block w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-200"/>
+		</div>
+		<div class="visibility-toggle">
+			<label>
+				<input type="radio" name="visibility" value="public" checked/>
+				<span>Public</span>
+			</label>
+			<label>
+				<input type="radio" name="visibility" value="private"/>
+				<span>Private</span>
+			</label>
+		</div>
+		<div id="upload-error" aria-live="polite">
+			@UploadError(errorMessage)
+		</div>
+		<button class="primary-btn" type="submit">Upload lab</button>
+	</form>
+}
+
+templ RecentDocuments(user *labbit.User, recent []labbit.RecentDocument) {
+	<section class="recent-docs">
+		<div class="recent-head">
+			<h2>Recent docs</h2>
+			<a class="secondary-btn view-all-link" href={ templpkg.URL("/@" + user.Username) }>
+				<span>View all</span>
+				<span class="view-all-arrow" aria-hidden="true">
+					@ArrowRightIcon()
+				</span>
+			</a>
+		</div>
+		<div class="recent-list">
+			for _, item := range recent {
+				<a class="recent-doc" href={ templpkg.URL(viewerPath(item.Document)) }>
+					<span>
+						<strong>{ item.Document.Title }</strong>
+						<small>{ recentDate(item) }</small>
+					</span>
+					<span class="recent-doc-action">
+						<em>{ item.Visibility }</em>
+						<span class="recent-doc-arrow" aria-hidden="true">
+							@ArrowRightIcon()
+						</span>
+					</span>
+				</a>
+			}
+		</div>
+	</section>
+}
+
+templ DocsPage(user *labbit.User, docs []labbit.RecentDocument, page int, hasNext bool, query string, theme string, authDisabled bool) {
+	@Base("Your docs - Labbit", theme) {
+		<div class="docs-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-5xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				if authDisabled {
+					@HeaderControls(nil, theme, false, "", "docs-header")
+				} else {
+					@HeaderControls(user, theme, true, "/", "docs-header")
+				}
+			</header>
+			<section class="docs-layout mx-auto mt-10 max-w-5xl">
+				<div class="docs-heading">
+					<div>
+						<p class="accent-text text-xs font-semibold uppercase tracking-[0.18em]">Library</p>
+						<h1>Your docs</h1>
+					</div>
+					<a class="primary-btn" href="/">Upload lab</a>
+				</div>
+				@DocsListFragment(docs, page, hasNext, query, "")
+			</section>
+		</div>
+	}
+}
+
+templ DocsListFragment(docs []labbit.RecentDocument, page int, hasNext bool, query string, notice string) {
+	<div id="docs-list-region" class="docs-list-region">
+		<form class="docs-search-form" method="get" action="/i/library" role="search" onsubmit="return false;">
+			<div class="docs-search-field">
+				<input id="library-search" type="search" name="q" value={ query } placeholder="Search by title" aria-label="Search docs" autocomplete="off" hx-get="/i/library" hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-trigger="input changed delay:150ms, search" hx-sync="this:replace" hx-push-url="true"/>
+				<a class="docs-search-clear" href="/i/library" hx-get="/i/library" hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url="/i/library" aria-label="Clear search" title="Clear search" onclick="document.getElementById('library-search').value=''; document.getElementById('library-search').focus();">
+					@CloseIcon()
+				</a>
+			</div>
+		</form>
+		<div id="docs-list-results" class="docs-list-results">
+			if notice != "" {
+				<p class="docs-notice" role="status">{ notice }</p>
+			}
+			if len(docs) == 0 && page <= 1 && query == "" {
+				<div class="docs-empty">
+					<h2>No docs yet</h2>
+					<a class="primary-btn" href="/">Upload lab</a>
+				</div>
+			} else if len(docs) == 0 {
+				<div class="docs-empty">
+					<h2>No matching docs</h2>
+					<p>Try a different title search.</p>
+				</div>
+			} else {
+				<div class="docs-list" role="list">
+					for _, item := range docs {
+						@DocsRow(item, page, query)
+					}
+				</div>
+				<div class="docs-list-footer">
+					<form id="docs-bulk-form" class="docs-bulk-form" hx-delete="/i/library" hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-confirm="Delete selected docs from your library?">
+						<input type="hidden" name="page" value={ fmt.Sprintf("%d", page) }/>
+						<input type="hidden" name="q" value={ query }/>
+						<button class="secondary-btn docs-bulk-delete" type="submit">Delete selected</button>
+					</form>
+					@DocsPagination(page, hasNext, query)
+				</div>
+			}
+		</div>
+	</div>
+}
+
+templ DocsRow(item labbit.RecentDocument, page int, query string) {
+	<article class="docs-row" role="listitem">
+		<label class="docs-select-control">
+			<input type="checkbox" name="doc" value={ item.Document.UID } form="docs-bulk-form" aria-label={ "Select " + item.Document.Title }/>
+		</label>
+		<a class="docs-doc-link" href={ templpkg.URL(viewerPath(item.Document)) }>
+			<strong>{ item.Document.Title }</strong>
+			<small>{ recentDate(item) }</small>
+		</a>
+		<form class="visibility-segment" hx-put={ docsActionPath(item.Document, "visibility", page, query) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" aria-label={ "Visibility for " + item.Document.Title }>
+			<input type="hidden" name="page" value={ fmt.Sprintf("%d", page) }/>
+			<input type="hidden" name="q" value={ query }/>
+			<button class={ visibilityOptionClass(item.Visibility, labbit.VisibilityPublic) } type="submit" name="visibility" value={ labbit.VisibilityPublic } disabled?={ item.Visibility == labbit.VisibilityPublic } aria-pressed?={ item.Visibility == labbit.VisibilityPublic }>Public</button>
+			<button class={ visibilityOptionClass(item.Visibility, labbit.VisibilityPrivate) } type="submit" name="visibility" value={ labbit.VisibilityPrivate } disabled?={ item.Visibility == labbit.VisibilityPrivate } aria-pressed?={ item.Visibility == labbit.VisibilityPrivate }>Private</button>
+		</form>
+		<div class="docs-row-actions">
+			<form hx-delete={ docsResourcePath(item.Document, page, query) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-confirm="Delete this document from your library?">
+				<input type="hidden" name="page" value={ fmt.Sprintf("%d", page) }/>
+				<input type="hidden" name="q" value={ query }/>
+				<button class="icon-btn docs-delete" type="submit" aria-label={ "Delete " + item.Document.Title } title="Delete">
+					@TrashIcon()
+				</button>
+			</form>
+		</div>
+	</article>
+}
+
+templ DocsPagination(page int, hasNext bool, query string) {
+	<nav class="docs-pagination" aria-label="Docs pages">
+		if page > 1 {
+			<a class="secondary-btn" href={ templpkg.URL(docsPagePath(page-1, query)) } hx-get={ templpkg.URL(docsPagePath(page-1, query)) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url={ templpkg.URL(docsPagePath(page-1, query)) }>Previous</a>
+		} else {
+			<span class="secondary-btn disabled" aria-disabled="true">Previous</span>
+		}
+		<span class="docs-page-count">Page { fmt.Sprintf("%d", page) }</span>
+		if hasNext {
+			<a class="secondary-btn" href={ templpkg.URL(docsPagePath(page+1, query)) } hx-get={ templpkg.URL(docsPagePath(page+1, query)) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url={ templpkg.URL(docsPagePath(page+1, query)) }>Next</a>
+		} else {
+			<span class="secondary-btn disabled" aria-disabled="true">Next</span>
+		}
+	</nav>
+}
+
+templ UserPage(profileUser *labbit.User, visitor *labbit.User, docs []labbit.RecentDocument, page int, hasNext bool, query string, theme string, authDisabled bool) {
+	@Base(profileUser.Username+"'s docs - Labbit", theme) {
+		<div class="docs-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-2xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				if authDisabled {
+					@HeaderControls(nil, theme, false, "", "user-header")
+				} else {
+					@HeaderControls(visitor, theme, visitor != nil, "", "user-header")
+				}
+			</header>
+			<section class="docs-layout mx-auto mt-10 max-w-2xl">
+				<div class="docs-heading">
+					<div>
+						<p class="accent-text text-xs font-semibold uppercase tracking-[0.18em]">Library</p>
+						<h1>{ profileUser.Username + "'s docs" }</h1>
+					</div>
+					if visitor != nil && visitor.ID == profileUser.ID {
+						<a class="secondary-btn" href="/i/library">Manage</a>
+					}
+				</div>
+				@UserDocsListFragment(profileUser, docs, page, hasNext, query, visitor != nil && visitor.ID == profileUser.ID)
+			</section>
+		</div>
+	}
+}
+
+templ UserDocsListFragment(profileUser *labbit.User, docs []labbit.RecentDocument, page int, hasNext bool, query string, ownerView bool) {
+	<div id="docs-list-region" class="docs-list-region">
+		<form class="docs-search-form" method="get" action={ templpkg.URL("/@" + profileUser.Username) } role="search" onsubmit="return false;">
+			<div class="docs-search-field">
+				<input id="user-library-search" type="search" name="q" value={ query } placeholder="Search by title" aria-label="Search docs" autocomplete="off" hx-get={ templpkg.URL("/@" + profileUser.Username) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-trigger="input changed delay:150ms, search" hx-sync="this:replace" hx-push-url="true"/>
+				<a class="docs-search-clear" href={ templpkg.URL("/@" + profileUser.Username) } hx-get={ templpkg.URL("/@" + profileUser.Username) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url={ templpkg.URL("/@" + profileUser.Username) } aria-label="Clear search" title="Clear search" onclick="document.getElementById('user-library-search').value=''; document.getElementById('user-library-search').focus();">
+					@CloseIcon()
+				</a>
+			</div>
+		</form>
+		<div id="docs-list-results" class="docs-list-results">
+			if len(docs) == 0 && page <= 1 && query == "" {
+				<div class="docs-empty">
+					if ownerView {
+						<h2>No docs yet</h2>
+						<p>Upload a lab to add it to this page.</p>
+					} else {
+						<h2>No public docs yet</h2>
+						<p>{ profileUser.Username } hasn't published any docs yet.</p>
+					}
+				</div>
+			} else if len(docs) == 0 {
+				<div class="docs-empty">
+					<h2>No matching docs</h2>
+					<p>Try a different title search.</p>
+				</div>
+			} else {
+				<div class="docs-list" role="list">
+					for _, item := range docs {
+						@UserDocsRow(item, ownerView)
+					}
+				</div>
+				<div class="docs-list-footer">
+					@UserDocsPagination(profileUser, page, hasNext, query)
+				</div>
+			}
+		</div>
+	</div>
+}
+
+templ UserDocsRow(item labbit.RecentDocument, ownerView bool) {
+	<a class={ userDocsRowClass(item) } href={ templpkg.URL(viewerPath(item.Document)) } role="listitem">
+		<div class="docs-doc-link">
+			<strong>{ item.Document.Title }</strong>
+			if ownerView {
+				<small>{ recentDate(item) + " · " + item.Visibility }</small>
+			} else {
+				<small>{ recentDate(item) }</small>
+			}
+		</div>
+		<span class="user-docs-arrow" aria-hidden="true">
+			@ArrowRightIcon()
+		</span>
+	</a>
+}
+
+templ UserDocsPagination(profileUser *labbit.User, page int, hasNext bool, query string) {
+	<nav class="docs-pagination" aria-label="Docs pages">
+		if page > 1 {
+			<a class="secondary-btn" href={ templpkg.URL(userLibraryPath(profileUser.Username, page-1, query)) } hx-get={ templpkg.URL(userLibraryPath(profileUser.Username, page-1, query)) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url={ templpkg.URL(userLibraryPath(profileUser.Username, page-1, query)) }>Previous</a>
+		} else {
+			<span class="secondary-btn disabled" aria-disabled="true">Previous</span>
+		}
+		<span class="docs-page-count">Page { fmt.Sprintf("%d", page) }</span>
+		if hasNext {
+			<a class="secondary-btn" href={ templpkg.URL(userLibraryPath(profileUser.Username, page+1, query)) } hx-get={ templpkg.URL(userLibraryPath(profileUser.Username, page+1, query)) } hx-target="#docs-list-results" hx-select="#docs-list-results" hx-swap="outerHTML" hx-push-url={ templpkg.URL(userLibraryPath(profileUser.Username, page+1, query)) }>Next</a>
+		} else {
+			<span class="secondary-btn disabled" aria-disabled="true">Next</span>
+		}
+	</nav>
+}
+
+templ OnboardingPage(user *labbit.User, theme string, errorMessage string, next string) {
+	@Base("Choose username - Labbit", theme) {
+		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
+			<header class="mx-auto flex max-w-3xl items-center justify-between gap-4">
+				<a class="home-brand" href="/" aria-label="Labbit home">
+					<img src="/assets/img/logo-mark-64.png" alt="" width="36" height="36"/>
+					<span>Labbit</span>
+				</a>
+				<div class="account-actions">
+					<form class="signout-icon-form" hx-post={ nextAction("/id/signout", "/") } method="post">
+						<button type="submit" class="icon-btn signout-icon" aria-label="Sign out" title="Sign out">
+							@SignOutIcon()
+						</button>
+					</form>
+					@ThemeToggle(theme, "onboarding-header")
+				</div>
+			</header>
+			<form class="id-panel id-panel-frame" method="post" action={ nextAction("/i/onboarding", next) }>
+				@IDPanelHeader("Onboarding", "Choose a username", "user")
+				<label class="username-field" for="username">
+					<span>Username</span>
+					<input id="username" name="username" type="text" minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" autocomplete="username" required/>
+				</label>
+				@UploadError(errorMessage)
+				<button class="primary-btn" type="submit">Activate account</button>
+			</form>
 		</div>
 	}
 }
@@ -260,20 +876,41 @@ templ UploadError(message string) {
 	}
 }
 
-templ ViewerPage(doc *labbit.Document, theme string) {
-	@ViewerSectionPage(doc, "overview", "", theme)
+templ ViewerPage(doc *labbit.Document, theme string, user *labbit.User, authDisabled bool) {
+	@ViewerSectionPage(doc, "overview", "", theme, user, authDisabled)
 }
 
-templ ViewerSectionPage(doc *labbit.Document, section string, selectedBlock string, theme string) {
-	@Base(doc.Title + " - Labbit", theme) {
-		@ViewerShell(doc, section, theme) {
+templ ViewerSectionPage(doc *labbit.Document, section string, selectedBlock string, theme string, user *labbit.User, authDisabled bool) {
+	@Base(doc.Title+" - Labbit", theme) {
+		@ViewerShell(doc, section, theme, user, authDisabled) {
 			@SectionContent(doc, section, selectedBlock)
 		}
 	}
 }
 
-templ ThemeToggle(theme string) {
-	<form class="theme-toggle-form" hx-post="/i/theme" hx-target="this" hx-swap="outerHTML">
+func themeToggleID(slot string) string {
+	if slot == "" {
+		slot = "default"
+	}
+	return "theme-toggle-" + slot
+}
+
+func themeToggleSlots() []string {
+	return []string{
+		"home-header",
+		"signin-header",
+		"signout-header",
+		"docs-header",
+		"user-header",
+		"onboarding-header",
+		"viewer-mobile",
+		"viewer-sidebar",
+	}
+}
+
+templ ThemeToggle(theme string, slot string) {
+	<form id={ themeToggleID(slot) } class="theme-toggle-form" hx-patch="/i/theme" hx-target="this" hx-swap="outerHTML">
+		<input type="hidden" name="slot" value={ slot }/>
 		<input type="hidden" name="theme" value={ nextTheme(theme) }/>
 		<button class="icon-btn theme-toggle" type="submit" data-theme-toggle aria-label={ themeLabel(theme) } title={ themeLabel(theme) }>
 			<svg class="theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true">
@@ -294,7 +931,39 @@ templ ThemeToggle(theme string) {
 	</form>
 }
 
-templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
+templ ThemeToggleOOB(theme string, slot string) {
+	<form id={ themeToggleID(slot) } class="theme-toggle-form" hx-patch="/i/theme" hx-target="this" hx-swap="outerHTML" hx-swap-oob="outerHTML">
+		<input type="hidden" name="slot" value={ slot }/>
+		<input type="hidden" name="theme" value={ nextTheme(theme) }/>
+		<button class="icon-btn theme-toggle" type="submit" data-theme-toggle aria-label={ themeLabel(theme) } title={ themeLabel(theme) }>
+			<svg class="theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="12" cy="12" r="4"></circle>
+				<path d="M12 2v2"></path>
+				<path d="M12 20v2"></path>
+				<path d="m4.93 4.93 1.41 1.41"></path>
+				<path d="m17.66 17.66 1.41 1.41"></path>
+				<path d="M2 12h2"></path>
+				<path d="M20 12h2"></path>
+				<path d="m6.34 17.66-1.41 1.41"></path>
+				<path d="m19.07 4.93-1.41 1.41"></path>
+			</svg>
+			<svg class="theme-toggle-moon" viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 7 7 0 1 0 20.5 14.5Z"></path>
+			</svg>
+		</button>
+	</form>
+}
+
+templ ThemeToggleResponse(theme string, currentSlot string) {
+	@ThemeToggle(theme, currentSlot)
+	for _, slot := range themeToggleSlots() {
+		if slot != currentSlot {
+			@ThemeToggleOOB(theme, slot)
+		}
+	}
+}
+
+templ ViewerShell(doc *labbit.Document, currentSection string, theme string, user *labbit.User, authDisabled bool) {
 	<div class="labbit-shell sidebar-collapsed" style={ accentStyle(doc) } data-current-section={ currentSection } data-current-section-type={ currentSectionType(doc, currentSection) } data-search-url={ searchPath(doc) }>
 		<aside class="sidebar">
 			<div class="sidebar-top">
@@ -309,7 +978,7 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
 				</div>
 				<div class="sidebar-actions">
 					<div class="sidebar-theme-mobile">
-						@ThemeToggle(theme)
+						@ThemeToggle(theme, "viewer-mobile")
 					</div>
 					<button class="icon-btn sidebar-toggle" type="button" data-toggle-sidebar aria-label="Toggle sidebar">
 						<span data-sidebar-collapse-icon>⇤</span>
@@ -318,11 +987,16 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
 				</div>
 			</div>
 			<div class="sidebar-inner">
-				<button class="search-trigger" type="button" data-open-search>Search <kbd>Ctrl K</kbd></button>
+				<button class="search-trigger" type="button" data-open-search popovertarget="search-popover">Search <kbd>Ctrl K</kbd></button>
 				@DocumentNav(doc, currentSection, false)
 			</div>
-			<div class="sidebar-bottom">
-				@ThemeToggle(theme)
+			<div class={ sidebarBottomClass(user != nil && !authDisabled) }>
+				if user != nil && !authDisabled {
+					<div class="sidebar-account">
+						@AccountChip(user, true, "right", "", true)
+					</div>
+				}
+				@ThemeToggle(theme, "viewer-sidebar")
 			</div>
 		</aside>
 		<div class="sidebar-resizer" data-sidebar-resizer></div>
@@ -331,27 +1005,35 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string) {
 				{ children... }
 			</div>
 		</section>
-		<div class="search-modal hidden" data-search-modal>
+		<div id="search-popover" class="search-modal" data-search-modal popover="auto">
 			<div class="search-box">
-				<input data-search-input type="search" placeholder="Search this lab" hx-get={ searchPath(doc) } hx-target="[data-search-results]" hx-trigger="input changed delay:120ms, search" hx-sync="this:replace" hx-include="this" name="q" autocomplete="off"/>
+				<input data-search-input type="search" placeholder="Search this lab" hx-get={ searchPath(doc) } hx-target="[data-search-results]" hx-trigger="input changed delay:120ms, search" hx-sync="this:replace" hx-include="this" name="q" autocomplete="off" autofocus/>
 				<div data-search-results class="search-results"></div>
 			</div>
 		</div>
-		<div class="keybindings-modal hidden" data-keybindings-modal>
+		<div id="keybindings-popover" class="keybindings-modal" data-keybindings-modal popover="auto">
 			<div class="keybindings-box">
 				<div class="modal-head">
 					<h2>Keyboard shortcuts</h2>
-					<button class="icon-btn" type="button" data-close-keybindings aria-label="Close shortcuts">×</button>
+					<button class="icon-btn" type="button" data-close-keybindings popovertarget="keybindings-popover" popovertargetaction="hide" aria-label="Close shortcuts">×</button>
 				</div>
 				<div class="keybinding-grid">
-					<span><kbd>?</kbd></span><p>Show shortcuts</p>
-					<span><kbd>Ctrl</kbd> <kbd>K</kbd></span><p>Open search</p>
-					<span><kbd>j</kbd> / <kbd>h</kbd></span><p>Move down / up a block and update the URL</p>
-					<span><kbd>Shift</kbd> <kbd>j</kbd> / <kbd>Shift</kbd> <kbd>h</kbd></span><p>Move down / up a section and update the URL</p>
-					<span><kbd>Shift</kbd> <kbd>a</kbd></span><p>Toggle the current lab key or check the current quiz</p>
-					<span><kbd>Ctrl</kbd> <kbd>j</kbd> / <kbd>Ctrl</kbd> <kbd>k</kbd> · <kbd>↑</kbd> / <kbd>↓</kbd></span><p>Move search selection</p>
-					<span><kbd>Enter</kbd></span><p>Open selected search result</p>
-					<span><kbd>Esc</kbd></span><p>Close modal</p>
+					<span><kbd>?</kbd></span>
+					<p>Show shortcuts</p>
+					<span><kbd>Ctrl</kbd> <kbd>K</kbd></span>
+					<p>Open search</p>
+					<span><kbd>j</kbd> / <kbd>h</kbd></span>
+					<p>Move down / up a block and update the URL</p>
+					<span><kbd>Shift</kbd> <kbd>j</kbd> / <kbd>Shift</kbd> <kbd>h</kbd></span>
+					<p>Move down / up a section and update the URL</p>
+					<span><kbd>Shift</kbd> <kbd>a</kbd></span>
+					<p>Toggle the current lab key or check the current quiz</p>
+					<span><kbd>Ctrl</kbd> <kbd>j</kbd> / <kbd>Ctrl</kbd> <kbd>k</kbd> · <kbd>↑</kbd> / <kbd>↓</kbd></span>
+					<p>Move search selection</p>
+					<span><kbd>Enter</kbd></span>
+					<p>Open selected search result</p>
+					<span><kbd>Esc</kbd></span>
+					<p>Close modal</p>
 				</div>
 			</div>
 		</div>
@@ -402,21 +1084,21 @@ templ LabTopicSection(doc *labbit.Document, topic labbit.Topic, selectedBlock st
 							<a class="share-number" href={ sectionBlockPath(doc, "labs", topic.ID, task.ID) } data-block-link data-share-target={ task.ID } hx-get={ sectionBlockPath(doc, "labs", topic.ID, task.ID) } hx-target="#content" hx-swap="innerHTML" hx-push-url={ sectionBlockPath(doc, "labs", topic.ID, task.ID) }>{ fmt.Sprintf("%02d", i+1) }</a>
 							<h2>{ task.Title }</h2>
 						</div>
-						if task.SolutionCount > 0 {
-							<button class="solution-toggle" type="button" data-solution-toggle data-solution-target={ "#solution-" + task.ID } data-select-block data-share-target={ task.ID } data-tooltip="Show Solution" hx-get={ solutionPath(doc, task.ID) } hx-target={ "#solution-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" aria-label="Show Solution" aria-expanded="false" aria-pressed="false">
-								<svg viewBox="0 0 24 24" aria-hidden="true">
-									<path d="M9 21h6"></path>
-									<path d="M10 17h4"></path>
-									<path d="M8.5 14.5a6 6 0 1 1 7 0c-.8.6-1.5 1.5-1.5 2.5h-4c0-1-.7-1.9-1.5-2.5Z"></path>
-								</svg>
-							</button>
-						}
 					</div>
 					<div class="prose-dark">
 						@safeHTML(taskPromptHTML(doc, task.Prompt))
 					</div>
 					if task.SolutionCount > 0 {
-						<div id={ "solution-" + task.ID } class="solution-slot hidden" data-solution-loaded="false"></div>
+						<details class="solution-toggle-wrap solution-disclosure">
+							<summary class="solution-toggle" data-solution-toggle data-solution-target={ "#solution-" + task.ID } data-select-block data-share-target={ task.ID } hx-get={ solutionPath(doc, task.ID) } hx-target={ "#solution-" + task.ID } hx-swap="innerHTML" hx-trigger="click once" aria-label="Toggle solution">
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path d="M9 21h6"></path>
+									<path d="M10 17h4"></path>
+									<path d="M8.5 14.5a6 6 0 1 1 7 0c-.8.6-1.5 1.5-1.5 2.5h-4c0-1-.7-1.9-1.5-2.5Z"></path>
+								</svg>
+							</summary>
+							<div id={ "solution-" + task.ID } class="solution-slot"></div>
+						</details>
 					}
 				</section>
 			}

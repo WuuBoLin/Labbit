@@ -4,12 +4,15 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	_ "github.com/joho/godotenv/autoload"
 
 	"labbit/internal/labbit"
@@ -19,13 +22,20 @@ type Server struct {
 	bind string
 	port int
 
-	labs *labbit.Store
+	labs          *labbit.Store
+	id            idConfig
+	webauthn      *webauthn.WebAuthn
+	oidcProviders map[string]*oidcProvider
+	disableAuth   bool
+	localUser     *labbit.User
 }
 
 type Config struct {
-	Bind string
-	Port int
-	DB   string
+	Bind        string
+	Port        int
+	DB          string
+	PublicURL   string
+	DisableAuth bool
 }
 
 func NewServer(config Config) *http.Server {
@@ -41,6 +51,9 @@ func NewServer(config Config) *http.Server {
 	if config.DB == "" {
 		config.DB = "./db/labbit.db"
 	}
+	if config.PublicURL == "" {
+		config.PublicURL = os.Getenv("PUBLIC_URL")
+	}
 	store, err := labbit.NewStore(config.DB)
 	if err != nil {
 		panic(fmt.Sprintf("labbit store: %v", err))
@@ -48,9 +61,30 @@ func NewServer(config Config) *http.Server {
 	_ = os.Setenv("DB_URL", config.DB)
 	slog.Info("labbit store initialized", "dsn", config.DB)
 	NewServer := &Server{
-		bind: config.Bind,
-		port: config.Port,
-		labs: store,
+		bind:        config.Bind,
+		port:        config.Port,
+		labs:        store,
+		disableAuth: config.DisableAuth,
+	}
+	if config.DisableAuth {
+		NewServer.ensureAuthDisabledUser()
+		slog.Warn("auth disabled; passkeys, OIDC, sessions, onboarding, and auth-only routes are unavailable")
+	} else {
+		id, err := newIDConfig(config.PublicURL, config.Port)
+		if err != nil {
+			panic(fmt.Sprintf("id config: %v", err))
+		}
+		webAuthn, err := webauthn.New(&webauthn.Config{
+			RPID:          id.rpID,
+			RPDisplayName: "Labbit",
+			RPOrigins:     []string{id.origin},
+		})
+		if err != nil {
+			panic(fmt.Sprintf("webauthn config: %v", err))
+		}
+		NewServer.id = id
+		NewServer.webauthn = webAuthn
+		NewServer.oidcProviders = loadOIDCProviders(id.publicURL)
 	}
 
 	server := &http.Server{
@@ -63,4 +97,26 @@ func NewServer(config Config) *http.Server {
 	slog.Info("http server configured", "addr", server.Addr)
 
 	return server
+}
+
+func (s *Server) ensureAuthDisabledUser() {
+	if s.labs == nil || s.localUser != nil {
+		return
+	}
+	user, err := s.labs.EnsureLocalUser(context.Background())
+	if err != nil {
+		panic(fmt.Sprintf("local user: %v", err))
+	}
+	s.localUser = user
+}
+
+func originHost(rawURL string) (origin string, host string, secure bool, err error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", false, err
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", "", false, fmt.Errorf("PUBLIC_URL must include scheme and host")
+	}
+	return u.Scheme + "://" + u.Host, u.Hostname(), u.Scheme == "https", nil
 }

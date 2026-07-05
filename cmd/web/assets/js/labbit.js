@@ -1,32 +1,59 @@
+// Copyright (C) 2026 WuuBoLin
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 (() => {
   if (window.__labbitInitialized) return;
   window.__labbitInitialized = true;
 
-  const qs = (s, r = document) => r.querySelector(s);
-  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
-  const minRem = 13.75, maxRem = 32.5, snapRem = 11.25, defaultRem = 18.75;
+  const qs = (selector, root = document) => root.querySelector(selector);
+  const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const shell = () => qs(".labbit-shell");
-  const searchItems = () => qsa("[data-search-result]");
-  const searchOpen = () => !qs("[data-search-modal]")?.classList.contains("hidden");
-  const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
-  const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
-  const mobile = () => !matchMedia("(min-width: 64rem)").matches;
+  const minRem = 13.75, maxRem = 32.5, snapRem = 11.25, defaultRem = 18.75;
 
-  function modal(name, open) {
-    const el = qs(`[data-${name}-modal]`);
-    if (!el) return;
-    el.classList.toggle("hidden", !open);
-    if (open && name === "search") {
-      const input = qs("[data-search-input]", el);
-      selectSearch(0);
-      input?.focus();
-      input?.select();
-    }
+  const rem = (px) => px / (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+  const mobile = () => !matchMedia("(min-width: 64rem)").matches;
+  const typing = (el) => el?.matches?.("input, textarea, select, [contenteditable='true']");
+  const prevent = (event, action) => (event.preventDefault(), action?.());
+  const popoverOpen = (el) => el?.matches?.(":popover-open");
+  const panel = (name) => qs(`[data-${name}-modal]`);
+  const selectedIndexBox = () => qs("[data-search-results]");
+  const searchItems = () => qsa("[data-search-result]");
+  const accountLongPressMs = 1234;
+  let accountLongPress = null;
+
+  const b64ToBuffer = (value) => {
+    const base64 = String(value).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4)), (c) => c.charCodeAt(0)).buffer;
+  };
+
+  const bufferToB64 = (value) =>
+    btoa(Array.from(new Uint8Array(value || new ArrayBuffer(0)), (byte) => String.fromCharCode(byte)).join(""))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+
+  function openPanel(name) {
+    const el = panel(name);
+    if (el && !popoverOpen(el)) el.showPopover?.();
+    if (name === "search") focusSearch();
+  }
+
+  function closePanel(name) {
+    const el = panel(name);
+    if (popoverOpen(el)) el.hidePopover?.();
+  }
+
+  function focusSearch() {
+    const input = qs("[data-search-input]", panel("search"));
+    selectSearch(0);
+    input?.focus();
+    input?.select();
   }
 
   function selectSearch(index) {
     const items = searchItems();
-    const box = qs("[data-search-results]");
+    const box = selectedIndexBox();
     qsa(".search-result.active").forEach((el) => el.classList.remove("active"));
     if (box) box.dataset.selectedIndex = "-1";
     if (!items.length) return;
@@ -37,12 +64,15 @@
   }
 
   function moveSearch(delta) {
-    const current = Number(qs("[data-search-results]")?.dataset.selectedIndex);
-    selectSearch(Number.isFinite(current) && current >= 0 ? current + delta : 0);
+    const current = Number(selectedIndexBox()?.dataset.selectedIndex);
+    selectSearch(
+      Number.isFinite(current) && current >= 0 ? current + delta : 0,
+    );
   }
 
   function activeSearch() {
-    const items = searchItems(), index = Number(qs("[data-search-results]")?.dataset.selectedIndex);
+    const items = searchItems();
+    const index = Number(selectedIndexBox()?.dataset.selectedIndex);
     return items[index] || items[0];
   }
 
@@ -61,8 +91,8 @@
     if (selected) return Math.max(0, items.indexOf(selected));
     const point = scrollY + innerHeight * 0.3;
     let current = 0;
-    items.forEach((el, i) => {
-      if (el.getBoundingClientRect().top + scrollY <= point) current = i;
+    items.forEach((el, index) => {
+      if (el.getBoundingClientRect().top + scrollY <= point) current = index;
     });
     return current;
   }
@@ -70,22 +100,25 @@
   function moveBlock(delta) {
     const items = blocks();
     if (!items.length) return;
-    const next = Math.max(0, Math.min(items.length - 1, currentBlockIndex(items) + delta));
+    const next = clamp(currentBlockIndex(items) + delta, 0, items.length - 1);
     const block = items[next];
     const link = qs("[data-block-link]", block);
     if (link) {
       markPending(link);
       link.click();
-    } else {
-      selectBlock(block, true, true);
+      return;
     }
+    selectBlock(block, true, true);
   }
 
   function moveSection(delta) {
     const links = qsa(".nav-link[data-section-id]");
-    const current = qs(".nav-link.active")?.dataset.sectionId || qs("#content [data-section]")?.dataset.section || "overview";
+    const current =
+      qs(".nav-link.active")?.dataset.sectionId ||
+      qs("#content [data-section]")?.dataset.section ||
+      "overview";
     const index = Math.max(0, links.findIndex((el) => el.dataset.sectionId === current));
-    const link = links[Math.max(0, Math.min(links.length - 1, index + delta))];
+    const link = links[clamp(index + delta, 0, links.length - 1)];
     if (link) {
       markPending(link);
       link.click();
@@ -93,11 +126,14 @@
   }
 
   function actOnBlock() {
-    const items = blocks(), block = qs("[data-action-block].selected") || items[currentBlockIndex(items)];
+    const items = blocks();
+    const block =
+      qs("[data-action-block].selected") || items[currentBlockIndex(items)];
     if (!block) return;
     const solution = qs("[data-solution-toggle]", block);
     if (solution) return solution.click();
-    const inline = qs("[data-inline-hint-toggle]", block), quiz = qs("[data-quiz-submit]:not(:disabled)", block);
+    const inline = qs("[data-inline-hint-toggle]", block);
+    const quiz = qs("[data-quiz-submit]:not(:disabled)", block);
     (inline || quiz)?.click();
   }
 
@@ -106,49 +142,43 @@
     if (button) button.disabled = !qsa("[data-quiz-option]", form).some((el) => el.checked);
   }
 
-  function updateThemeControls(theme) {
-    const next = theme === "light" ? "dark" : "light";
-    const label = theme === "light" ? "Switch to dark mode" : "Switch to light mode";
-    qsa(".theme-toggle-form").forEach((form) => {
-      const input = qs('input[name="theme"]', form);
-      const button = qs("[data-theme-toggle]", form);
-      if (input) input.value = next;
-      if (button) {
-        button.setAttribute("aria-label", label);
-        button.setAttribute("title", label);
-      }
-    });
-  }
-
-  function updateSolutionToggle(button, open) {
-    if (!button) return;
-    const label = open ? "Hide Solution" : "Show Solution";
-    button.dataset.tooltip = label;
-    button.setAttribute("aria-label", label);
-    button.setAttribute("aria-expanded", String(open));
-    button.setAttribute("aria-pressed", String(open));
-  }
-
   function applySidebar() {
     const root = shell();
     if (!root) return;
-    const width = Math.max(minRem, Math.min(maxRem, Number(localStorage.getItem("labbit.sidebar.width.rem")) || defaultRem));
+    const width = clamp(Number(localStorage.getItem("labbit.sidebar.width.rem")) || defaultRem, minRem, maxRem);
     root.style.setProperty("--sidebar-expanded-width", `${width}rem`);
-    root.classList.toggle("sidebar-collapsed", mobile() ? root.dataset.mobileSidebarOpen !== "true" : localStorage.getItem("labbit.sidebar.collapsed") === "true");
-    root.style.setProperty("--sidebar-width", root.classList.contains("sidebar-collapsed") ? "var(--sidebar-rail-width)" : `${width}rem`);
+    root.classList.toggle(
+      "sidebar-collapsed",
+      mobile()
+        ? root.dataset.mobileSidebarOpen !== "true"
+        : localStorage.getItem("labbit.sidebar.collapsed") === "true",
+    );
+    root.style.setProperty(
+      "--sidebar-width",
+      root.classList.contains("sidebar-collapsed")
+        ? "var(--sidebar-rail-width)"
+        : `${width}rem`,
+    );
   }
 
   function toggleSidebar(trigger) {
     const root = shell();
     if (!root) return;
     if (mobile()) {
-      root.dataset.mobileSidebarOpen = root.classList.contains("sidebar-collapsed") ? "true" : "false";
+      root.dataset.mobileSidebarOpen = root.classList.contains(
+        "sidebar-collapsed",
+      )
+        ? "true"
+        : "false";
       trigger?.blur?.();
       applySidebar();
       return;
     }
     root.classList.toggle("sidebar-collapsed");
-    localStorage.setItem("labbit.sidebar.collapsed", String(root.classList.contains("sidebar-collapsed")));
+    localStorage.setItem(
+      "labbit.sidebar.collapsed",
+      String(root.classList.contains("sidebar-collapsed")),
+    );
     trigger?.blur?.();
     applySidebar();
   }
@@ -160,12 +190,14 @@
     applySidebar();
   }
 
-  function resizeSidebar(event) {
+  function resizeSidebar(event, handle) {
     const root = shell();
     if (!root) return;
     event.preventDefault();
+    handle?.setPointerCapture?.(event.pointerId);
     root.classList.remove("sidebar-collapsed");
     localStorage.setItem("labbit.sidebar.collapsed", "false");
+
     const move = (e) => {
       const width = rem(e.clientX);
       if (width < snapRem) {
@@ -173,67 +205,257 @@
         localStorage.setItem("labbit.sidebar.collapsed", "true");
         return;
       }
-      const clamped = Math.max(minRem, Math.min(maxRem, width));
+      const clamped = clamp(width, minRem, maxRem);
       root.classList.remove("sidebar-collapsed");
       root.style.setProperty("--sidebar-width", `${clamped}rem`);
       root.style.setProperty("--sidebar-expanded-width", `${clamped}rem`);
       localStorage.setItem("labbit.sidebar.width.rem", String(clamped));
     };
+
     const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
+      handle?.removeEventListener("pointermove", move);
+      handle?.removeEventListener("pointerup", up);
+      handle?.removeEventListener("pointercancel", up);
     };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
+
+    move(event);
+    handle?.addEventListener("pointermove", move);
+    handle?.addEventListener("pointerup", up, { once: true });
+    handle?.addEventListener("pointercancel", up, { once: true });
   }
 
   function markPending(el) {
     const root = shell();
-    if (root) root.dataset.pendingScrollTarget = el.dataset.scrollTarget || el.dataset.shareTarget || "";
+    if (root)
+      root.dataset.pendingScrollTarget =
+        el.dataset.scrollTarget || el.dataset.shareTarget || "";
   }
 
-  function swapTarget(event) {
-    return event.detail?.target || event.detail?.ctx?.target || event.target;
+  function setIDStatus(panel, text) {
+    const status = qs("[data-id-status]", panel);
+    if (status) status.textContent = text || "";
+  }
+
+  function setPasskeyBusy(panel, busy) {
+    if (!panel) return;
+    panel.dataset.passkeyBusy = busy ? "true" : "false";
+    qsa("[data-passkey-signin], [data-passkey-register]", panel).forEach((button) => (button.disabled = busy));
+    if (!busy) setIDStatus(panel, "");
+  }
+
+  function clearAccountLongPress() {
+    clearTimeout(accountLongPress?.timer);
+    accountLongPress = null;
+  }
+
+  function startAccountLongPress(event) {
+    const chip = event.target.closest("[data-account-chip]");
+    if (!chip || event.button > 0) return;
+    clearAccountLongPress();
+    accountLongPress = { chip };
+    accountLongPress.timer = setTimeout(() => {
+      accountLongPress = null;
+      location.assign("/id");
+    }, accountLongPressMs);
+  }
+
+  function trackAccountLongPress(event) {
+    const chip = accountLongPress?.chip;
+    if (!chip) return;
+    const { left, right, top, bottom } = chip.getBoundingClientRect();
+    if (
+      event.clientX < left ||
+      event.clientX > right ||
+      event.clientY < top ||
+      event.clientY > bottom
+    ) clearAccountLongPress();
+  }
+
+  function passkeyFailureMessage(error, mode) {
+    if (["AbortError", "NotAllowedError"].includes(error?.name)) {
+      return "Passkey prompt was cancelled.";
+    }
+    return mode === "register"
+      ? "Passkey could not be created."
+      : "Passkey sign-in failed.";
+  }
+
+  function decodeCredentialOptions(options) {
+    const publicKey = options.publicKey;
+    publicKey.challenge = b64ToBuffer(publicKey.challenge);
+    if (publicKey.user?.id) publicKey.user.id = b64ToBuffer(publicKey.user.id);
+    (publicKey.excludeCredentials || []).forEach((credential) => (credential.id = b64ToBuffer(credential.id)));
+    (publicKey.allowCredentials || []).forEach((credential) => (credential.id = b64ToBuffer(credential.id)));
+    return publicKey;
+  }
+
+  function encodeCredential(credential) {
+    const response = credential.response;
+    const out = {
+      id: credential.id,
+      type: credential.type,
+      rawId: bufferToB64(credential.rawId),
+      response: {
+        clientDataJSON: bufferToB64(response.clientDataJSON),
+      },
+      clientExtensionResults: credential.getClientExtensionResults?.() || {},
+      authenticatorAttachment: credential.authenticatorAttachment || undefined,
+    };
+    ["attestationObject", "authenticatorData", "signature", "userHandle"].forEach((key) => {
+      if (response[key]) out.response[key] = bufferToB64(response[key]);
+    });
+    return out;
+  }
+
+  function idEndpoint(path, params) {
+    return `${path}?${new URLSearchParams(params)}`;
+  }
+
+  async function copyText(button) {
+    const originalHTML = button.innerHTML;
+    let label = "Copied";
+    try {
+      const code = button.dataset.copyUrl
+        ? await fetch(button.dataset.copyUrl).then((response) => response.ok ? response.text() : "")
+        : button.closest(".code-shell")?.querySelector("[data-code]")?.dataset.code;
+      if (!code) return;
+      await navigator.clipboard.writeText(code);
+    } catch {
+      label = "Copy failed";
+    }
+    button.textContent = label;
+    setTimeout(() => (button.innerHTML = originalHTML), 900);
+  }
+
+  async function passkey(panel, mode) {
+    if (!window.PublicKeyCredential)
+      return setIDStatus(panel, "Passkeys are not available in this browser.");
+    if (!panel || panel.dataset.passkeyBusy === "true") return;
+    setPasskeyBusy(panel, true);
+    const next = panel.dataset.next || "/";
+    const endpoint = mode === "register" ? "/id/register" : "/id/authenticate";
+
+    try {
+      setIDStatus(panel, "Check your browser prompt.");
+      const begin = await fetch(idEndpoint(endpoint, { step: "begin", next }), {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!begin.ok) {
+        setIDStatus(panel, "Passkey setup failed.");
+        return;
+      }
+
+      const payload = await begin.json();
+      const publicKey = decodeCredentialOptions(payload.options);
+      const credential =
+        mode === "register"
+          ? await navigator.credentials.create({ publicKey })
+          : await navigator.credentials.get({ publicKey });
+      if (!credential) {
+        setIDStatus(panel, "Passkey prompt was cancelled.");
+        return;
+      }
+
+      const finish = await fetch(
+        idEndpoint(endpoint, { step: "finish", state: payload.state, next }),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(encodeCredential(credential)),
+        },
+      );
+      if (!finish.ok) {
+        setIDStatus(
+          panel,
+          mode === "register"
+            ? "Passkey could not be created."
+            : "Passkey sign-in failed.",
+        );
+        return;
+      }
+
+      const result = await finish.json();
+      location.assign(result.next || "/");
+    } catch (error) {
+      setIDStatus(panel, passkeyFailureMessage(error, mode));
+    } finally {
+      setPasskeyBusy(panel, false);
+    }
   }
 
   document.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
-    if (searchOpen()) {
-      if ((event.ctrlKey || event.metaKey) && key === "j") return event.preventDefault(), moveSearch(1);
-      if ((event.ctrlKey || event.metaKey) && key === "k") return event.preventDefault(), moveSearch(-1);
-      if (event.key === "ArrowDown") return event.preventDefault(), moveSearch(1);
-      if (event.key === "ArrowUp") return event.preventDefault(), moveSearch(-1);
-      if (event.key === "Enter") return event.preventDefault(), activeSearch()?.click();
+
+    if (popoverOpen(panel("search"))) {
+      if ((event.ctrlKey || event.metaKey) && key === "j")
+        return prevent(event, () => moveSearch(1));
+      if ((event.ctrlKey || event.metaKey) && key === "k")
+        return prevent(event, () => moveSearch(-1));
+      if (event.key === "ArrowDown")
+        return prevent(event, () => moveSearch(1));
+      if (event.key === "ArrowUp")
+        return prevent(event, () => moveSearch(-1));
+      if (event.key === "Enter")
+        return prevent(event, () => activeSearch()?.click());
     }
-    if ((event.ctrlKey || event.metaKey) && key === "k") return event.preventDefault(), modal("search", true);
-    if (event.key === "Escape") return modal("search", false), modal("keybindings", false);
-    if (typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.key === "?") return event.preventDefault(), modal("keybindings", true);
-    if (event.key === "A") return event.preventDefault(), actOnBlock();
-    if (event.key === "J") return event.preventDefault(), moveSection(1);
-    if (event.key === "H" || event.key === "K") return event.preventDefault(), moveSection(-1);
-    if (event.key === "j") return event.preventDefault(), moveBlock(1);
-    if (event.key === "h" || event.key === "k") return event.preventDefault(), moveBlock(-1);
+
+    if ((event.ctrlKey || event.metaKey) && key === "k")
+      return prevent(event, () => openPanel("search"));
+    if (event.key === "Escape")
+      return (closePanel("keybindings"), closePanel("search"));
+    if (typing(event.target) || event.ctrlKey || event.metaKey || event.altKey)
+      return;
+    if (event.key === "?")
+      return prevent(event, () => openPanel("keybindings"));
+    if (event.key === "A") return prevent(event, actOnBlock);
+    if (event.key === "J") return prevent(event, () => moveSection(1));
+    if (event.key === "H" || event.key === "K")
+      return prevent(event, () => moveSection(-1));
+    if (event.key === "j") return prevent(event, () => moveBlock(1));
+    if (event.key === "h" || event.key === "k")
+      return prevent(event, () => moveBlock(-1));
   });
 
-  document.addEventListener("click", async (event) => {
-    if (event.target.matches("[data-search-modal]")) return modal("search", false);
-    if (event.target.matches("[data-keybindings-modal]") || event.target.closest("[data-close-keybindings]")) return modal("keybindings", false);
+  document.addEventListener("click", (event) => {
+    const passkeySignin = event.target.closest("[data-passkey-signin]");
+    if (passkeySignin)
+      return (
+        event.preventDefault(),
+        passkey(passkeySignin.closest("[data-id-panel]"), "signin")
+      );
+    const passkeyRegister = event.target.closest("[data-passkey-register]");
+    if (passkeyRegister)
+      return (
+        event.preventDefault(),
+        passkey(passkeyRegister.closest("[data-id-panel]"), "register")
+      );
+
+    if (event.target.matches?.("[data-search-modal]")) return closePanel("search");
+    if (event.target.matches?.("[data-keybindings-modal]"))
+      return closePanel("keybindings");
+
     const sidebar = event.target.closest("[data-toggle-sidebar]");
     if (sidebar) return toggleSidebar(sidebar);
-    const opener = event.target.closest("[data-open-search]");
-    if (opener) return modal("search", true);
-    const hxLink = event.target.closest("[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]");
+
+    const hxLink = event.target.closest(
+      "[hx-get][data-section-id], [hx-get][data-share-target], [data-search-result]",
+    );
     if (hxLink) {
       markPending(hxLink);
       closeMobileSidebar();
     }
-    if (event.target.closest("[data-close-search]")) modal("search", false);
+    if (event.target.closest("[data-close-search]")) closePanel("search");
 
-    const selected = event.target.closest("[data-select-block], [data-inline-hint-toggle], [data-solution-toggle]");
+    const selected = event.target.closest(
+      "[data-select-block], [data-inline-hint-toggle], [data-solution-toggle]",
+    );
     if (selected) selectBlock(selected.closest("[data-action-block]"));
 
-    const share = event.target.closest("[data-share-target]:not([hx-get]):not([data-solution-toggle])");
+    const share = event.target.closest(
+      "[data-share-target]:not([hx-get]):not([data-solution-toggle])",
+    );
     if (share) {
       const target = document.getElementById(share.dataset.shareTarget);
       if (target?.matches?.("[data-action-block]")) {
@@ -242,49 +464,51 @@
       }
     }
 
-    const solutionButton = event.target.closest("[data-solution-toggle]");
-    if (solutionButton) {
-      const slot = qs(solutionButton.dataset.solutionTarget);
-      if (slot?.dataset.solutionLoaded === "true") {
-        event.preventDefault();
-        const hidden = slot.classList.toggle("hidden");
-        solutionButton.classList.toggle("open", !hidden);
-        updateSolutionToggle(solutionButton, !hidden);
-      }
-    }
-
     const copy = event.target.closest("[data-copy]");
-    if (!copy) return;
-    const code = copy.closest(".code-shell")?.querySelector("[data-code]")?.dataset.code;
-    if (!code) return;
-    await navigator.clipboard.writeText(code);
-    copy.textContent = "Copied";
-    setTimeout(() => (copy.textContent = "Copy"), 900);
+    if (copy) copyText(copy);
   });
 
-  document.addEventListener("mousedown", (event) => event.target.closest("[data-sidebar-resizer]") && resizeSidebar(event));
+  document.addEventListener("pointerdown", (event) => {
+    const resizer = event.target.closest("[data-sidebar-resizer]");
+    if (resizer) resizeSidebar(event, resizer);
+  });
+
+  document.addEventListener("pointerdown", startAccountLongPress);
+  document.addEventListener("pointermove", trackAccountLongPress);
+  document.addEventListener("pointerup", clearAccountLongPress);
+  document.addEventListener("pointercancel", clearAccountLongPress);
+  document.addEventListener("pointerleave", clearAccountLongPress);
+  document.addEventListener("contextmenu", clearAccountLongPress);
+
   document.addEventListener("change", (event) => {
     const form = event.target.closest("[data-quiz-card]");
     if (form) updateQuiz(form);
   });
 
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      if (
+        event.target.matches?.("[data-search-modal]") &&
+        event.target.matches(":popover-open")
+      ) {
+        focusSearch();
+      }
+    },
+    true,
+  );
+
   document.body.addEventListener("htmx:after:swap", (event) => {
-    const target = swapTarget(event);
+    const target = event.detail?.target || event.detail?.ctx?.target || event.target;
     if (target?.tagName === "BODY") applySidebar();
     if (target?.matches?.("[data-search-results]")) return selectSearch(0);
-    if (target?.classList?.contains("solution-slot")) {
-      const slot = target, button = qs(`[data-solution-target="#${CSS.escape(slot.id)}"]`);
-      slot.dataset.solutionLoaded = "true";
-      slot.classList.remove("hidden");
-      button?.classList.add("open");
-      updateSolutionToggle(button, true);
-    }
     qsa("[data-quiz-card]").forEach(updateQuiz);
     if (target?.id === "content") {
       setTimeout(() => {
         const root = shell();
         const pending = root?.dataset.pendingScrollTarget || "";
-        const scrollTarget = document.getElementById(pending) || qs("[data-section]", target);
+        const scrollTarget =
+          document.getElementById(pending) || qs("[data-section]", target);
         if (root) delete root.dataset.pendingScrollTarget;
         scrollTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 0);
@@ -292,14 +516,12 @@
   });
 
   document.body.addEventListener("labbitThemeChanged", (event) => {
-    const theme = event.detail?.theme === "light" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    updateThemeControls(theme);
+    document.documentElement.dataset.theme =
+      event.detail?.theme === "light" ? "light" : "dark";
   });
 
   document.addEventListener("DOMContentLoaded", () => {
     applySidebar();
-    updateThemeControls(document.documentElement.dataset.theme === "light" ? "light" : "dark");
     qsa("[data-quiz-card]").forEach(updateQuiz);
     qs("[data-action-block].selected")?.scrollIntoView({ block: "start" });
   });

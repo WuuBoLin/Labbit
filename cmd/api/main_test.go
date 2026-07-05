@@ -22,11 +22,11 @@ func TestParseCLIShortFlags(t *testing.T) {
 }
 
 func TestParseCLILongFlags(t *testing.T) {
-	options, err := parseCLI([]string{"--bind", "0.0.0.0", "--port", "80", "--db", "./db/labbit.db"}, io.Discard)
+	options, err := parseCLI([]string{"--bind", "0.0.0.0", "--port", "80", "--db", "./db/labbit.db", "--public-url", "https://labbit.example", "--disable-auth"}, io.Discard)
 	if err != nil {
 		t.Fatalf("parseCLI() error = %v", err)
 	}
-	if options.Bind != "0.0.0.0" || options.Port != 80 || options.DB != "./db/labbit.db" {
+	if options.Bind != "0.0.0.0" || options.Port != 80 || options.DB != "./db/labbit.db" || options.PublicURL != "https://labbit.example" || !options.DisableAuth {
 		t.Fatalf("options = %#v", options)
 	}
 }

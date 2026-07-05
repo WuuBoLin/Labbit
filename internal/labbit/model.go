@@ -6,16 +6,34 @@ package labbit
 import "time"
 
 type Document struct {
-	ID        int64
-	UID       string
-	Slug      string
-	Title     string
-	Accent    string
-	Hash      string
-	Overview  string
-	Topics    []Topic
-	Questions []Question
+	ID         int64
+	UID        string
+	Slug       string
+	Title      string
+	Accent     string
+	Hash       string
+	OwnerID    string
+	OwnerName  string
+	Visibility string
+	Overview   string
+	Topics     []Topic
+	Questions  []Question
+	CreatedAt  time.Time
+	UploadedAt time.Time
+}
+
+type User struct {
+	ID        string
+	Username  string
+	Status    string
 	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type RecentDocument struct {
+	Document   *Document
+	Visibility string
+	UploadedAt time.Time
 }
 
 type Topic struct {

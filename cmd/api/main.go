@@ -23,13 +23,15 @@ import (
 const version = "dev"
 
 type cliOptions struct {
-	Bind      string
-	Port      int
-	DB        string
-	LogFormat string
-	LogLevel  string
-	Help      bool
-	Version   bool
+	Bind        string
+	Port        int
+	DB          string
+	PublicURL   string
+	LogFormat   string
+	LogLevel    string
+	DisableAuth bool
+	Help        bool
+	Version     bool
 }
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
@@ -71,9 +73,11 @@ func main() {
 	}
 
 	appServer := server.NewServer(server.Config{
-		Bind: options.Bind,
-		Port: options.Port,
-		DB:   options.DB,
+		Bind:        options.Bind,
+		Port:        options.Port,
+		DB:          options.DB,
+		PublicURL:   options.PublicURL,
+		DisableAuth: options.DisableAuth,
 	})
 
 	done := make(chan bool, 1)
@@ -96,6 +100,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 		Bind:      envString("BIND", "0.0.0.0"),
 		Port:      envInt("PORT", 80),
 		DB:        envString("DB_URL", "./db/labbit.db"),
+		PublicURL: envString("PUBLIC_URL", ""),
 		LogFormat: defaultLogFormat(),
 		LogLevel:  envString("LOG_LEVEL", "info"),
 	}
@@ -110,6 +115,8 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	flags.IntVar(&options.Port, "port", options.Port, "port to listen on")
 	flags.StringVar(&options.DB, "d", options.DB, "sqlite database path or DSN")
 	flags.StringVar(&options.DB, "db", options.DB, "sqlite database path or DSN")
+	flags.StringVar(&options.PublicURL, "public-url", options.PublicURL, "public base URL for identity callbacks and passkeys")
+	flags.BoolVar(&options.DisableAuth, "disable-auth", false, "disable passkeys, OIDC, sessions, onboarding, and auth-only routes")
 	flags.StringVar(&options.LogFormat, "log-format", options.LogFormat, "log format: text or json")
 	flags.StringVar(&options.LogLevel, "log-level", options.LogLevel, "log level: debug, info, warn, or error")
 	flags.Usage = func() {
