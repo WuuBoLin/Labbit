@@ -839,7 +839,8 @@
     --sidebar-expanded-width: 18.75rem;
     --sidebar-rail-width: 4.25rem;
     --shadow-color: rgb(var(--accent-rgb) / 0.2);
-    @apply grid min-h-screen min-w-0 content-start overflow-x-hidden bg-black lg:grid-cols-[var(--sidebar-width)_1px_1fr];
+    @apply grid min-h-screen min-w-0 content-start bg-black lg:grid-cols-[var(--sidebar-width)_1px_1fr];
+    overflow-x: clip;
   }
 
   html[data-theme="light"] .labbit-shell {
@@ -852,7 +853,7 @@
   }
 
   .sidebar {
-    @apply sticky top-0 z-30 min-w-0 self-start border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0;
+    @apply sticky top-0 z-30 min-w-0 self-start border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:flex lg:h-screen lg:w-[var(--sidebar-width)] lg:flex-col lg:overflow-hidden lg:border-b-0;
   }
 
   .sidebar-collapsed .sidebar {
@@ -908,7 +909,7 @@
   }
 
   .sidebar-inner {
-    @apply absolute left-0 right-0 top-full z-20 overflow-y-auto border-b px-4 pb-4 pt-4 shadow-2xl transition-[max-height,opacity,transform,padding] duration-200 ease-out lg:static lg:z-auto lg:border-b-0 lg:px-4 lg:pb-20 lg:pt-0 lg:shadow-none;
+    @apply absolute left-0 right-0 top-full z-20 overflow-y-auto border-b px-4 pb-4 pt-4 shadow-2xl transition-[max-height,opacity,transform,padding] duration-200 ease-out lg:static lg:z-auto lg:min-h-0 lg:flex-1 lg:border-b-0 lg:px-4 lg:pb-20 lg:pt-0 lg:shadow-none;
     width: 100%;
     max-height: calc(100dvh - 4.25rem);
     background: var(--page-bg);
