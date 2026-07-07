@@ -98,6 +98,7 @@
   body {
     font-family: MonoLisaText, "MonoLisa Text", ui-sans-serif, system-ui,
       -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-x: hidden;
     background: var(--page-bg);
     color: var(--text-strong);
   }
@@ -113,21 +114,38 @@
 
 @layer components {
   .upload-panel {
-    @apply mt-8 flex flex-col gap-5 rounded-lg border border-zinc-800 bg-zinc-950/80 p-5 shadow-2xl shadow-black/40 lg:mt-20;
+    @apply mt-8 flex min-w-0 flex-col gap-5 rounded-lg border border-zinc-800 bg-zinc-950/80 p-5 shadow-2xl shadow-black/40 lg:mt-20;
+  }
+
+  .home-page,
+  .docs-page {
+    @apply overflow-x-hidden;
+  }
+
+  .home-layout {
+    @apply min-w-0;
+  }
+
+  .home-layout > * {
+    @apply min-w-0;
   }
 
   .home-brand {
-    @apply inline-flex items-center gap-3 text-base font-semibold;
+    @apply inline-flex min-w-0 items-center gap-3 text-base font-semibold;
     color: var(--text-strong);
   }
 
   .home-brand img {
-    @apply rounded;
+    @apply shrink-0 rounded;
     filter: var(--logo-filter);
   }
 
+  .home-brand span {
+    @apply min-w-0 truncate;
+  }
+
   .home-copy {
-    @apply py-0;
+    @apply min-w-0 py-0;
   }
 
   .home-copy h1 {
@@ -144,7 +162,7 @@
   }
 
   .skill-resource-box {
-    @apply mt-6 max-w-lg rounded-xl border p-4 shadow-lg;
+    @apply mt-6 min-w-0 max-w-lg rounded-xl border p-4 shadow-lg;
     background: var(--panel-bg);
     border-color: var(--border-main);
   }
@@ -213,7 +231,7 @@
   }
 
   .home-workspace {
-    @apply flex flex-col gap-6;
+    @apply flex min-w-0 flex-col gap-6;
   }
 
   .home-workspace .upload-panel,
@@ -432,13 +450,13 @@
   }
 
   .recent-docs {
-    @apply rounded-lg border p-4;
+    @apply min-w-0 rounded-lg border p-4;
     background: var(--panel-bg);
     border-color: var(--border-main);
   }
 
   .recent-head {
-    @apply flex items-center justify-between gap-4;
+    @apply flex min-w-0 items-center justify-between gap-4;
   }
 
   .view-all-link {
@@ -463,7 +481,7 @@
   }
 
   .recent-doc {
-    @apply flex items-center justify-between gap-4 py-3 text-sm transition-colors duration-150 ease-out;
+    @apply flex min-w-0 items-center justify-between gap-4 py-3 text-sm transition-colors duration-150 ease-out;
     color: var(--text-main);
   }
 
@@ -473,6 +491,10 @@
 
   .recent-doc span {
     @apply min-w-0;
+  }
+
+  .recent-doc > span:first-child {
+    @apply flex-1;
   }
 
   .recent-doc strong {
@@ -817,7 +839,7 @@
     --sidebar-expanded-width: 18.75rem;
     --sidebar-rail-width: 4.25rem;
     --shadow-color: rgb(var(--accent-rgb) / 0.2);
-    @apply grid min-h-screen content-start bg-black lg:grid-cols-[var(--sidebar-width)_1px_1fr];
+    @apply grid min-h-screen min-w-0 content-start overflow-x-hidden bg-black lg:grid-cols-[var(--sidebar-width)_1px_1fr];
   }
 
   html[data-theme="light"] .labbit-shell {
@@ -830,7 +852,7 @@
   }
 
   .sidebar {
-    @apply sticky top-0 z-30 self-start border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0;
+    @apply sticky top-0 z-30 min-w-0 self-start border-b border-zinc-900 bg-black transition-[width,box-shadow] duration-200 ease-out lg:h-screen lg:w-[var(--sidebar-width)] lg:overflow-hidden lg:border-b-0;
   }
 
   .sidebar-collapsed .sidebar {
@@ -866,7 +888,7 @@
   }
 
   .sidebar-top {
-    @apply flex min-h-[4.25rem] items-center gap-3 px-4 py-3 lg:w-[var(--sidebar-expanded-width)];
+    @apply flex min-h-[4.25rem] min-w-0 items-center gap-3 px-4 py-3 lg:w-[var(--sidebar-expanded-width)];
   }
 
   .icon-btn {
@@ -964,7 +986,7 @@
   }
 
   .brand-text strong {
-    @apply block text-sm;
+    @apply block truncate text-sm;
   }
 
   .brand-text small {
@@ -1001,7 +1023,7 @@
   }
 
   .content-wrap {
-    @apply min-w-0 px-4 py-6 sm:px-8 lg:px-10;
+    @apply min-w-0 overflow-x-hidden px-4 py-6 sm:px-8 lg:px-10;
   }
 
   .sidebar-collapsed .content-wrap {
@@ -1024,6 +1046,7 @@
 
   article > h1 {
     @apply text-3xl font-semibold leading-tight text-zinc-50 sm:text-4xl;
+    overflow-wrap: anywhere;
   }
 
   .share-title {
@@ -1036,6 +1059,7 @@
 
   .prose-dark {
     @apply mt-5 space-y-4 text-base leading-7 text-zinc-300;
+    overflow-wrap: anywhere;
   }
 
   .prose-dark p {
