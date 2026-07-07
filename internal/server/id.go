@@ -146,6 +146,9 @@ func (s *Server) ensureID() {
 		}
 		s.id = id
 	}
+	if s.publicURL == "" {
+		s.publicURL = s.id.publicURL
+	}
 	if s.webauthn == nil {
 		w, err := webauthn.New(&webauthn.Config{
 			RPID:          s.id.rpID,
@@ -318,7 +321,8 @@ func (s *Server) idHandler(c echo.Context) error {
 func (s *Server) authenticateHandler(c echo.Context) error {
 	user := currentUser(c)
 	if user == nil {
-		return render(c, http.StatusOK, web.SignInPage(requestTheme(c), nextTarget(c, "/"), s.oidcButtons()))
+		component := web.SignInPage(requestTheme(c), nextTarget(c, "/"), s.oidcButtons())
+		return render(c, http.StatusOK, s.withMeta(component, s.identityMeta(c)))
 	}
 	cookie, err := c.Cookie(sessionCookieName)
 	if err == nil {
@@ -343,7 +347,8 @@ func (s *Server) registerRedirectHandler(c echo.Context) error {
 }
 
 func (s *Server) signoutPageHandler(c echo.Context) error {
-	return render(c, http.StatusOK, web.SignOutPage(currentUser(c), requestTheme(c), signoutNext(c), refererTarget(c)))
+	component := web.SignOutPage(currentUser(c), requestTheme(c), signoutNext(c), refererTarget(c))
+	return render(c, http.StatusOK, s.withMeta(component, s.signOutMeta(c)))
 }
 
 func (s *Server) signoutHandler(c echo.Context) error {
@@ -366,7 +371,8 @@ func (s *Server) onboardingPageHandler(c echo.Context) error {
 	if user.Status == labbit.UserStatusActive {
 		return c.Redirect(http.StatusSeeOther, safeNext(c.QueryParam("next"), "/"))
 	}
-	return render(c, http.StatusOK, web.OnboardingPage(user, requestTheme(c), "", c.QueryParam("next")))
+	component := web.OnboardingPage(user, requestTheme(c), "", c.QueryParam("next"))
+	return render(c, http.StatusOK, s.withMeta(component, s.websiteMeta(c)))
 }
 
 func (s *Server) onboardingHandler(c echo.Context) error {
@@ -380,7 +386,8 @@ func (s *Server) onboardingHandler(c echo.Context) error {
 		if err == labbit.ErrUsernameTaken {
 			message = "That username has been taken."
 		}
-		return render(c, http.StatusBadRequest, web.OnboardingPage(user, requestTheme(c), message, c.QueryParam("next")))
+		component := web.OnboardingPage(user, requestTheme(c), message, c.QueryParam("next"))
+		return render(c, http.StatusBadRequest, s.withMeta(component, s.websiteMeta(c)))
 	}
 	c.Set("currentUser", activated)
 	return c.Redirect(http.StatusSeeOther, safeNext(c.QueryParam("next"), "/"))

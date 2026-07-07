@@ -119,6 +119,34 @@ func TestHomePageRendersSkillResourceBox(t *testing.T) {
 	}
 }
 
+func TestBaseRendersOpenGraphMetadata(t *testing.T) {
+	meta := WebsitePageMeta("https://labbit.example", "/")
+	html := renderString(t, ComponentWithPageMeta(Base("Fallback", "dark"), meta))
+	for _, want := range []string{
+		`<meta name="description" content="Web viewer for lab exam notes. Upload a Labbit XML file and Labbit turns it into a documentation-style workspace with LABs and QUIZ.">`,
+		`<meta property="og:title" content="Labbit · Lab and Quiz viewer">`,
+		`<meta property="og:description" content="Web viewer for lab exam notes. Upload a Labbit XML file and Labbit turns it into a documentation-style workspace with LABs and QUIZ.">`,
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:url" content="https://labbit.example/">`,
+		`<meta property="og:site_name" content="Labbit">`,
+		`<meta property="og:locale" content="en_US">`,
+		`<meta property="og:determiner" content="auto">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta property="og:image:type" content="image/png">`,
+		`<meta property="og:image:width" content="1200">`,
+		`<meta property="og:image:height" content="630">`,
+		`<meta property="og:image:alt" content="Labbit social card">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta name="twitter:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta name="twitter:image:alt" content="Labbit social card">`,
+		`<link rel="canonical" href="https://labbit.example/">`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("base metadata missing %q: %s", want, html)
+		}
+	}
+}
+
 func TestOnboardingPagePostsNextInQuery(t *testing.T) {
 	user := &labbit.User{Status: labbit.UserStatusPending}
 	html := renderString(t, OnboardingPage(user, "dark", "", "/after"))

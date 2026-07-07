@@ -10,6 +10,43 @@ templ Base(title string, theme string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width,initial-scale=1"/>
 			<meta name="theme-color" content="#1d9bf0"/>
+			<meta name="description" content={ MetaDescription(ctx, title) }/>
+			<meta property="og:title" content={ MetaTitle(ctx, title) }/>
+			<meta property="og:description" content={ MetaDescription(ctx, title) }/>
+			<meta property="og:type" content={ MetaType(ctx, title) }/>
+			<meta property="og:url" content={ MetaURL(ctx, title) }/>
+			<meta property="og:site_name" content={ SiteName }/>
+			<meta property="og:locale" content={ GlobalOGLocale }/>
+			<meta property="og:determiner" content={ GlobalOGDeterminer }/>
+			<meta property="og:image" content={ MetaImageURL(ctx, title) }/>
+			<meta property="og:image:type" content={ MetaImageType(ctx, title) }/>
+			<meta property="og:image:width" content={ MetaImageWidth(ctx, title) }/>
+			<meta property="og:image:height" content={ MetaImageHeight(ctx, title) }/>
+			<meta property="og:image:alt" content={ MetaImageAlt(ctx, title) }/>
+			<meta name="twitter:card" content={ MetaTwitterCard(ctx, title) }/>
+			<meta name="twitter:title" content={ MetaTitle(ctx, title) }/>
+			<meta name="twitter:description" content={ MetaDescription(ctx, title) }/>
+			<meta name="twitter:image" content={ MetaImageURL(ctx, title) }/>
+			<meta name="twitter:image:alt" content={ MetaImageAlt(ctx, title) }/>
+			if MetaProfileUsername(ctx, title) != "" {
+				<meta property="profile:username" content={ MetaProfileUsername(ctx, title) }/>
+			}
+			if MetaArticleAuthor(ctx, title) != "" {
+				<meta property="article:author" content={ MetaArticleAuthor(ctx, title) }/>
+			}
+			if MetaArticlePublishedTime(ctx, title) != "" {
+				<meta property="article:published_time" content={ MetaArticlePublishedTime(ctx, title) }/>
+			}
+			if MetaArticleModifiedTime(ctx, title) != "" {
+				<meta property="article:modified_time" content={ MetaArticleModifiedTime(ctx, title) }/>
+			}
+			if MetaArticleSection(ctx, title) != "" {
+				<meta property="article:section" content={ MetaArticleSection(ctx, title) }/>
+			}
+			for _, tag := range MetaArticleTags(ctx, title) {
+				<meta property="article:tag" content={ tag }/>
+			}
+			<link rel="canonical" href={ MetaCanonical(ctx, title) }/>
 			<title>{ title }</title>
 			<link rel="icon" href="/assets/img/favicon.ico" sizes="any"/>
 			<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/icon-32.png"/>

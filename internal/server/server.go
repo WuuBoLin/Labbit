@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -24,6 +25,7 @@ type Server struct {
 
 	labs          *labbit.Store
 	id            idConfig
+	publicURL     string
 	webauthn      *webauthn.WebAuthn
 	oidcProviders map[string]*oidcProvider
 	disableAuth   bool
@@ -54,6 +56,13 @@ func NewServer(config Config) *http.Server {
 	if config.PublicURL == "" {
 		config.PublicURL = os.Getenv("PUBLIC_URL")
 	}
+	publicURL := strings.TrimRight(strings.TrimSpace(config.PublicURL), "/")
+	if publicURL == "" {
+		publicURL = localPublicURL(config.Port)
+	}
+	if _, _, _, err := originHost(publicURL); err != nil {
+		panic(fmt.Sprintf("public URL config: %v", err))
+	}
 	store, err := labbit.NewStore(config.DB)
 	if err != nil {
 		panic(fmt.Sprintf("labbit store: %v", err))
@@ -64,13 +73,14 @@ func NewServer(config Config) *http.Server {
 		bind:        config.Bind,
 		port:        config.Port,
 		labs:        store,
+		publicURL:   publicURL,
 		disableAuth: config.DisableAuth,
 	}
 	if config.DisableAuth {
 		NewServer.ensureAuthDisabledUser()
 		slog.Warn("auth disabled; passkeys, OIDC, sessions, onboarding, and auth-only routes are unavailable")
 	} else {
-		id, err := newIDConfig(config.PublicURL, config.Port)
+		id, err := newIDConfig(publicURL, config.Port)
 		if err != nil {
 			panic(fmt.Sprintf("id config: %v", err))
 		}

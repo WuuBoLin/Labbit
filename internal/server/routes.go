@@ -120,14 +120,16 @@ func (s *Server) homeHandler(c echo.Context) error {
 		return s.redirectToOnboarding(c)
 	}
 	if user == nil {
-		return render(c, http.StatusOK, web.HomePage(nil, nil, "", requestTheme(c), c.QueryParam("next"), s.oidcButtons(), s.disableAuth))
+		component := web.HomePage(nil, nil, "", requestTheme(c), c.QueryParam("next"), s.oidcButtons(), s.disableAuth)
+		return render(c, http.StatusOK, s.withMeta(component, s.websiteMeta(c)))
 	}
 	page := 1
 	recent, err := s.labs.GetRecentDocuments(c.Request().Context(), user.ID, page, 10)
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, web.HomePage(user, recent, "", requestTheme(c), "", s.oidcButtons(), s.disableAuth))
+	component := web.HomePage(user, recent, "", requestTheme(c), "", s.oidcButtons(), s.disableAuth)
+	return render(c, http.StatusOK, s.withMeta(component, s.websiteMeta(c)))
 }
 
 func (s *Server) docsPageHandler(c echo.Context) error {
@@ -153,7 +155,8 @@ func (s *Server) docsPageHandler(c echo.Context) error {
 		c.Response().Header().Set("HX-Push-Url", docsLibraryPath(page, query))
 		return render(c, http.StatusOK, web.DocsListFragment(docs, page, hasNext, query, ""))
 	}
-	return render(c, http.StatusOK, web.DocsPage(user, docs, page, hasNext, query, requestTheme(c), s.disableAuth))
+	component := web.DocsPage(user, docs, page, hasNext, query, requestTheme(c), s.disableAuth)
+	return render(c, http.StatusOK, s.withMeta(component, s.websiteMeta(c)))
 }
 
 func (s *Server) userPageHandler(c echo.Context) error {
@@ -189,7 +192,8 @@ func (s *Server) userPageHandler(c echo.Context) error {
 		c.Response().Header().Set("HX-Push-Url", userLibraryPath(profileUser.Username, page, query))
 		return render(c, http.StatusOK, web.UserDocsListFragment(profileUser, docs, page, hasNext, query, ownerView))
 	}
-	return render(c, http.StatusOK, web.UserPage(profileUser, visitor, docs, page, hasNext, query, requestTheme(c), s.disableAuth))
+	component := web.UserPage(profileUser, visitor, docs, page, hasNext, query, requestTheme(c), s.disableAuth)
+	return render(c, http.StatusOK, s.withMeta(component, s.userMeta(c, profileUser)))
 }
 
 func (s *Server) docsVisibilityHandler(c echo.Context) error {
@@ -388,7 +392,8 @@ func (s *Server) uploadHandler(c echo.Context) error {
 		}
 		slog.Info("duplicate lab upload reused", "uid", doc.UID, "slug", doc.Slug, "filename", file.Filename, "user", user.Username)
 		c.Response().Header().Set("HX-Push-Url", docPath(doc))
-		return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
+		component := web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth)
+		return render(c, http.StatusOK, s.withMeta(component, s.documentMetaForPath(docPath(doc), doc, "labs", "overview")))
 	}
 
 	doc, err := labbit.Parse(bytes.NewReader(body))
@@ -409,7 +414,8 @@ func (s *Server) uploadHandler(c echo.Context) error {
 				return err
 			}
 			c.Response().Header().Set("HX-Push-Url", docPath(doc))
-			return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
+			component := web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth)
+			return render(c, http.StatusOK, s.withMeta(component, s.documentMetaForPath(docPath(doc), doc, "labs", "overview")))
 		}
 		return s.renderUploadError(c, http.StatusInternalServerError, "The lab could not be saved.")
 	}
@@ -422,7 +428,8 @@ func (s *Server) uploadHandler(c echo.Context) error {
 	}
 	slog.Info("lab uploaded", "uid", doc.UID, "slug", doc.Slug, "title", doc.Title, "filename", file.Filename, "user", user.Username)
 	c.Response().Header().Set("HX-Push-Url", docPath(doc))
-	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
+	component := web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth)
+	return render(c, http.StatusOK, s.withMeta(component, s.documentMetaForPath(docPath(doc), doc, "labs", "overview")))
 }
 
 func (s *Server) renderUploadError(c echo.Context, status int, message string) error {
@@ -436,7 +443,8 @@ func (s *Server) renderUploadError(c echo.Context, status int, message string) e
 	if user != nil && user.Status == labbit.UserStatusActive {
 		recent, _ = s.labs.GetRecentDocuments(c.Request().Context(), user.ID, 1, 10)
 	}
-	return render(c, status, web.HomePage(user, recent, message, requestTheme(c), "", s.oidcButtons(), s.disableAuth))
+	component := web.HomePage(user, recent, message, requestTheme(c), "", s.oidcButtons(), s.disableAuth)
+	return render(c, status, s.withMeta(component, s.websiteMeta(c)))
 }
 
 func fileHash(body []byte) string {
@@ -468,7 +476,8 @@ func (s *Server) viewerHandler(c echo.Context) error {
 	if doc == nil {
 		return nil
 	}
-	return render(c, http.StatusOK, web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth))
+	component := web.ViewerPage(doc, requestTheme(c), currentUser(c), s.disableAuth)
+	return render(c, http.StatusOK, s.withMeta(component, s.documentMeta(c, doc, "labs", "overview")))
 }
 
 func (s *Server) sectionHandler(c echo.Context) error {
@@ -485,7 +494,8 @@ func (s *Server) sectionHandler(c echo.Context) error {
 		if !sectionExists(doc, sectionType, section) {
 			return echo.NewHTTPError(http.StatusNotFound, "section not found")
 		}
-		return render(c, http.StatusOK, web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c), currentUser(c), s.disableAuth))
+		component := web.ViewerSectionPage(doc, section, c.QueryParam("block"), requestTheme(c), currentUser(c), s.disableAuth)
+		return render(c, http.StatusOK, s.withMeta(component, s.documentMeta(c, doc, sectionType, section)))
 	}
 	return renderSection(c, doc, sectionType, section, c.QueryParam("block"))
 }
@@ -627,6 +637,91 @@ func render(c echo.Context, status int, component templ.Component) error {
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
 	c.Response().WriteHeader(status)
 	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+func (s *Server) withMeta(component templ.Component, meta web.PageMeta) templ.Component {
+	return web.ComponentWithPageMeta(component, meta)
+}
+
+func (s *Server) websiteMeta(c echo.Context) web.PageMeta {
+	return web.WebsitePageMeta(s.metaPublicURL(), web.CanonicalPath(c.Request().URL.Path))
+}
+
+func (s *Server) identityMeta(c echo.Context) web.PageMeta {
+	return web.IdentityPageMeta(s.metaPublicURL(), web.CanonicalPath(c.Request().URL.Path))
+}
+
+func (s *Server) signOutMeta(c echo.Context) web.PageMeta {
+	return web.SignOutPageMeta(s.metaPublicURL(), web.CanonicalPath(c.Request().URL.Path))
+}
+
+func (s *Server) userMeta(c echo.Context, user *labbit.User) web.PageMeta {
+	return web.UserPageMeta(s.metaPublicURL(), web.CanonicalPath(c.Request().URL.Path), user.Username)
+}
+
+func (s *Server) documentMeta(c echo.Context, doc *labbit.Document, sectionType, section string) web.PageMeta {
+	return s.documentMetaForPath(web.CanonicalPath(c.Request().URL.Path), doc, sectionType, section)
+}
+
+func (s *Server) documentMetaForPath(path string, doc *labbit.Document, sectionType, section string) web.PageMeta {
+	title, articleSection := documentMetaTitleAndSection(doc, sectionType, section)
+	published := doc.UploadedAt
+	if published.IsZero() {
+		published = doc.CreatedAt
+	}
+	return web.ArticlePageMeta(
+		s.metaPublicURL(),
+		web.CanonicalPath(path),
+		title,
+		web.PlainTextSnippet(doc.Overview, 220),
+		"/@"+url.PathEscape(doc.OwnerName),
+		articleSection,
+		published,
+		published,
+		documentMetaTags(doc),
+	)
+}
+
+func (s *Server) metaPublicURL() string {
+	if s.publicURL != "" {
+		return s.publicURL
+	}
+	if s.id.publicURL != "" {
+		return s.id.publicURL
+	}
+	return localPublicURL(s.port)
+}
+
+func documentMetaTitleAndSection(doc *labbit.Document, sectionType, section string) (string, string) {
+	if section == "" || section == "overview" {
+		return doc.Title, web.ArticleOverviewValue
+	}
+	switch sectionType {
+	case "labs":
+		for _, topic := range doc.Topics {
+			if topic.ID == section {
+				return topic.Title + " · " + doc.Title + " · Labbit", web.ArticleLabTag
+			}
+		}
+	case "quiz":
+		for _, topic := range quizTopics(doc.Questions) {
+			if topic.ID == section {
+				return topic.Title + " · " + doc.Title + " · Labbit", web.ArticleQuizTag
+			}
+		}
+	}
+	return doc.Title, web.ArticleOverviewValue
+}
+
+func documentMetaTags(doc *labbit.Document) []string {
+	tags := []string{web.ArticleDefaultTag}
+	if len(doc.Topics) > 0 {
+		tags = append(tags, web.ArticleLabTag)
+	}
+	if len(doc.Questions) > 0 {
+		tags = append(tags, web.ArticleQuizTag)
+	}
+	return tags
 }
 
 func requestTheme(c echo.Context) string {

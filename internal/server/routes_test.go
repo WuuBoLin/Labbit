@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -85,6 +86,128 @@ func TestSkillMarkdownAsset(t *testing.T) {
 	if body := resp.Body.String(); !strings.Contains(body, "# Labbit Authoring Guide") || !strings.Contains(body, "valid Labbit XML") {
 		t.Fatalf("GET /assets/SKILL.md returned unexpected body: %s", body)
 	}
+}
+
+func TestHomePageRendersWebsiteOpenGraphMetadata(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp := httptest.NewRecorder()
+	(&Server{publicURL: "https://labbit.example"}).RegisterRoutes().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	assertHTMLContainsAll(t, resp.Body.String(), []string{
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:title" content="Labbit · Lab and Quiz viewer">`,
+		`<meta property="og:description" content="Web viewer for lab exam notes. Upload a Labbit XML file and Labbit turns it into a documentation-style workspace with LABs and QUIZ.">`,
+		`<meta property="og:url" content="https://labbit.example/">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta property="og:image:width" content="1200">`,
+		`<meta property="og:image:height" content="630">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta name="twitter:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<link rel="canonical" href="https://labbit.example/">`,
+	})
+}
+
+func TestUserPageRendersProfileOpenGraphMetadata(t *testing.T) {
+	store, err := labbit.NewMemoryStore()
+	if err != nil {
+		t.Fatalf("NewMemoryStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	activeTestUser(t, store, "alice")
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
+
+	req := httptest.NewRequest(http.MethodGet, "/@alice?q=ignored", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	assertHTMLContainsAll(t, resp.Body.String(), []string{
+		`<meta property="og:type" content="profile">`,
+		`<meta property="og:title" content="alice&#39;s docs · Labbit">`,
+		`<meta property="og:description" content="Labbit documents by alice.">`,
+		`<meta property="og:url" content="https://labbit.example/@alice">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/icon-512.png">`,
+		`<meta property="og:image:width" content="512">`,
+		`<meta property="og:image:height" content="512">`,
+		`<meta property="og:image:alt" content="Labbit icon">`,
+		`<meta name="twitter:card" content="summary">`,
+		`<meta name="twitter:image" content="https://labbit.example/assets/img/icon-512.png">`,
+		`<meta property="profile:username" content="alice">`,
+		`<link rel="canonical" href="https://labbit.example/@alice">`,
+	})
+	if strings.Contains(resp.Body.String(), "Public Labbit documents by alice") {
+		t.Fatalf("profile description still contains Public: %s", resp.Body.String())
+	}
+}
+
+func TestDocumentPagesRenderArticleOpenGraphMetadata(t *testing.T) {
+	store, err := labbit.NewMemoryStore()
+	if err != nil {
+		t.Fatalf("NewMemoryStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	doc, err := labbit.Parse(strings.NewReader(labbitSample()))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	doc.UID = "ogdoc1"
+	doc.Hash = "og-doc"
+	if err := store.SaveDocument(context.Background(), doc); err != nil {
+		t.Fatalf("SaveDocument() error = %v", err)
+	}
+	owner := activeTestUser(t, store, "alice")
+	if err := store.SaveUserDocument(context.Background(), owner.ID, doc.ID, labbit.VisibilityPublic); err != nil {
+		t.Fatalf("SaveUserDocument() error = %v", err)
+	}
+	stored, err := store.GetUserDocument(context.Background(), "alice", "ogdoc1", "linux-services")
+	if err != nil {
+		t.Fatalf("GetUserDocument() error = %v", err)
+	}
+	published := stored.UploadedAt.UTC().Format(time.RFC3339)
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
+
+	req := httptest.NewRequest(http.MethodGet, "/@alice/docs/ogdoc1/linux-services?block=ignored", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("doc status = %d", resp.Code)
+	}
+	assertHTMLContainsAll(t, resp.Body.String(), []string{
+		`<meta property="og:type" content="article">`,
+		`<meta property="og:title" content="Linux Services Exam">`,
+		`<meta property="og:description" content="Overview">`,
+		`<meta property="og:url" content="https://labbit.example/@alice/docs/ogdoc1/linux-services">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta property="og:image:width" content="1200">`,
+		`<meta property="og:image:height" content="630">`,
+		`<meta property="og:image:alt" content="Labbit social card">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta name="twitter:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta property="article:author" content="https://labbit.example/@alice">`,
+		`<meta property="article:published_time" content="` + published + `">`,
+		`<meta property="article:modified_time" content="` + published + `">`,
+		`<meta property="article:section" content="Overview">`,
+		`<meta property="article:tag" content="Labbit">`,
+		`<meta property="article:tag" content="LAB">`,
+		`<meta property="article:tag" content="QUIZ">`,
+	})
+
+	req = httptest.NewRequest(http.MethodGet, "/@alice/docs/ogdoc1/linux-services/quiz/basics", nil)
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("quiz section status = %d", resp.Code)
+	}
+	assertHTMLContainsAll(t, resp.Body.String(), []string{
+		`<meta property="og:title" content="Basics · Linux Services Exam · Labbit">`,
+		`<meta property="og:url" content="https://labbit.example/@alice/docs/ogdoc1/linux-services/quiz/basics">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/social-card.png">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta property="article:section" content="QUIZ">`,
+	})
 }
 
 func TestZstdCompressionStaticTextAsset(t *testing.T) {
@@ -313,7 +436,7 @@ func TestLibraryPageRequiresActiveSessionAndRenders(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	user := activeTestUser(t, store, "alice")
-	handler := (&Server{labs: store}).RegisterRoutes()
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/i/library", nil)
 	resp := httptest.NewRecorder()
@@ -618,7 +741,7 @@ func TestPasskeyActionsUseIDEndpoints(t *testing.T) {
 		t.Fatalf("NewMemoryStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	handler := (&Server{labs: store}).RegisterRoutes()
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/id/register?next=%2Fafter", nil)
 	resp := httptest.NewRecorder()
@@ -649,6 +772,14 @@ func TestPasskeyActionsUseIDEndpoints(t *testing.T) {
 		}
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/id/authenticate?next=%2Fafter", nil)
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /id/authenticate status = %d, want 200", resp.Code)
+	}
+	assertIdentityMetadata(t, resp.Body.String(), "https://labbit.example/id/authenticate")
+
 	req = httptest.NewRequest(http.MethodPost, "/id/authenticate", nil)
 	resp = httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
@@ -677,7 +808,7 @@ func TestAuthenticateGetRedirectsSignedInUserToNext(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	user := activeTestUser(t, store, "alice")
-	handler := (&Server{labs: store}).RegisterRoutes()
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/id/authenticate?next=%2Fafter", nil)
 	addSessionCookie(t, store, req, user.ID)
@@ -711,7 +842,7 @@ func TestSignoutGetRendersPageAndPostRevokesSession(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	user := activeTestUser(t, store, "alice")
-	handler := (&Server{labs: store}).RegisterRoutes()
+	handler := (&Server{labs: store, publicURL: "https://labbit.example"}).RegisterRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/id/signout?next=%2Fprevious", nil)
 	addSessionCookie(t, store, req, user.ID)
@@ -721,6 +852,7 @@ func TestSignoutGetRendersPageAndPostRevokesSession(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /id/signout status = %d, want 200", resp.Code)
 	}
+	assertSignOutMetadata(t, resp.Body.String(), "https://labbit.example/id/signout")
 	if !strings.Contains(resp.Body.String(), `method="post" action="/id/signout?next=%2Fprevious"`) {
 		t.Fatalf("GET /id/signout did not render POST form: %s", resp.Body.String())
 	}
@@ -944,6 +1076,45 @@ func headerValuesContain(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func assertHTMLContainsAll(t *testing.T, html string, wants []string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(html, want) {
+			t.Fatalf("HTML missing %q: %s", want, html)
+		}
+	}
+}
+
+func assertIdentityMetadata(t *testing.T, html string, canonical string) {
+	t.Helper()
+	assertThumbnailMetadata(t, html, canonical, "Authenticate ID · Labbit", "Sign in to continue to Labbit.")
+}
+
+func assertSignOutMetadata(t *testing.T, html string, canonical string) {
+	t.Helper()
+	assertThumbnailMetadata(t, html, canonical, "Sign out · Labbit", "Sign out of your Labbit session.")
+}
+
+func assertThumbnailMetadata(t *testing.T, html string, canonical string, title string, description string) {
+	t.Helper()
+	assertHTMLContainsAll(t, html, []string{
+		`<title>` + title + `</title>`,
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:title" content="` + title + `">`,
+		`<meta property="og:description" content="` + description + `">`,
+		`<meta property="og:url" content="` + canonical + `">`,
+		`<meta property="og:image" content="https://labbit.example/assets/img/icon-512.png">`,
+		`<meta property="og:image:width" content="512">`,
+		`<meta property="og:image:height" content="512">`,
+		`<meta property="og:image:alt" content="Labbit icon">`,
+		`<meta name="twitter:card" content="summary">`,
+		`<meta name="twitter:title" content="` + title + `">`,
+		`<meta name="twitter:description" content="` + description + `">`,
+		`<meta name="twitter:image" content="https://labbit.example/assets/img/icon-512.png">`,
+		`<link rel="canonical" href="` + canonical + `">`,
+	})
 }
 
 func savedRouteDocument(t *testing.T, store *labbit.Store, uid, hash, title string) *labbit.Document {

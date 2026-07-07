@@ -502,7 +502,7 @@ templ SkillResourceBox() {
 }
 
 templ SignInPage(theme string, next string, providers []OIDCButton) {
-	@Base("Sign in - Labbit", theme) {
+	@Base(IdentityOGTitle, theme) {
 		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
 			<header class="mx-auto flex max-w-3xl items-center justify-between gap-4">
 				<a class="home-brand" href="/" aria-label="Labbit home">
@@ -547,7 +547,7 @@ templ SignInPanel(next string, providers []OIDCButton) {
 }
 
 templ SignOutPage(user *labbit.User, theme string, next string, cancel string) {
-	@Base("Sign out - Labbit", theme) {
+	@Base(SignOutOGTitle, theme) {
 		<div class="home-page min-h-screen px-5 py-6 lg:px-8">
 			<header class="mx-auto flex max-w-3xl items-center justify-between gap-4">
 				<a class="home-brand" href="/" aria-label="Labbit home">
