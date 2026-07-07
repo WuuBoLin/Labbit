@@ -1,3 +1,8 @@
+---
+name: labbit-authoring
+description: Generate valid Labbit XML lab, quiz, or combined lab-and-quiz workspaces for the Labbit web viewer. Use when creating or validating Labbit XML files, component structure, IDs, quiz questions, hints, solutions, images, or Markdown content inside Labbit documents.
+---
+
 # Labbit Authoring Guide
 
 Labbit reads one XML file that defines a lab, quiz, or combined lab-and-quiz workspace. This guide is the canonical specification for generating valid Labbit XML.
