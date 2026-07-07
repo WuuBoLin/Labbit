@@ -336,9 +336,9 @@ templ IDPanelHeader(eyebrow string, title string, icon string) {
 
 templ SignOutIcon() {
 	<svg viewBox="0 0 24 24" aria-hidden="true">
-		<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-		<path d="M16 17l5-5-5-5"></path>
-		<path d="M21 12H9"></path>
+		<path d="M15 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4"></path>
+		<path d="M8 17l-5-5 5-5"></path>
+		<path d="M3 12h12"></path>
 	</svg>
 }
 
@@ -368,7 +368,7 @@ templ CloseIcon() {
 
 templ AccountChip(user *labbit.User, showSignout bool, popoverPos string, signoutNext string, signoutPage bool) {
 	if user != nil {
-		<div class="account-menu-wrapper group relative inline-flex justify-center">
+		<div class="account-menu-wrapper group relative inline-flex items-center justify-center gap-1.5 lg:gap-0">
 			if user.Status == labbit.UserStatusActive && user.Username != "" {
 				<a class="account-chip" data-account-chip href={ templpkg.URL("/@" + user.Username) }>{ accountLabel(user) }</a>
 			} else {
@@ -376,9 +376,9 @@ templ AccountChip(user *labbit.User, showSignout bool, popoverPos string, signou
 			}
 			if showSignout {
 				<div
-					class={ "absolute z-50 flex items-center h-full top-0 opacity-0 pointer-events-none transition-all duration-200 ease-out group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-x-0",
-					templ.KV("right-full pr-1.5 translate-x-2", popoverPos == "left"),
-					templ.KV("left-full pl-1.5 -translate-x-2", popoverPos == "right") }
+					class={ "relative z-10 order-first flex items-center h-full opacity-100 pointer-events-auto translate-x-0 lg:absolute lg:z-50 lg:order-none lg:top-0 lg:opacity-0 lg:pointer-events-none lg:transition-all lg:duration-200 lg:ease-out lg:group-hover:opacity-100 lg:group-hover:pointer-events-auto lg:group-hover:translate-x-0",
+					templ.KV("lg:right-full lg:pr-1.5 lg:translate-x-2", popoverPos == "left"),
+					templ.KV("lg:left-full lg:pl-1.5 lg:-translate-x-2", popoverPos == "right") }
 				>
 					if signoutPage {
 						<a class="icon-btn signout-icon shadow-md bg-zinc-950 border border-zinc-800 hover:border-accent hover:text-accent" href="/id/signout" aria-label="Sign out" title="Sign out">
@@ -989,6 +989,11 @@ templ ViewerShell(doc *labbit.Document, currentSection string, theme string, use
 			<div class="sidebar-inner">
 				<button class="search-trigger" type="button" data-open-search popovertarget="search-popover">Search <kbd>Ctrl K</kbd></button>
 				@DocumentNav(doc, currentSection, false)
+				if user != nil && !authDisabled {
+					<div class="sidebar-account-mobile lg:hidden mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between">
+						@AccountChip(user, true, "right", "", true)
+					</div>
+				}
 			</div>
 			<div class={ sidebarBottomClass(user != nil && !authDisabled) }>
 				if user != nil && !authDisabled {

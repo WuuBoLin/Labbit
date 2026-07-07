@@ -232,9 +232,9 @@ iVBORw0KGgo=
   <quiz>
     <topic title="Quiz">
       <question type="single">
-        <prompt><image type="svg" alt="Prompt diagram"><![CDATA[<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>]]></image></prompt>
-        <option correct="true">A</option>
-        <explanation><image type="svg" alt="Explanation diagram"><![CDATA[<svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10"/></svg>]]></image></explanation>
+	<prompt><image type="svg" alt="Prompt diagram"><![CDATA[<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>]]></image></prompt>
+	<option correct="true">A</option>
+	<explanation><image type="svg" alt="Explanation diagram"><![CDATA[<svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10"/></svg>]]></image></explanation>
       </question>
     </topic>
   </quiz>

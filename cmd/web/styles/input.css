@@ -641,7 +641,7 @@
 
   .docs-row {
     @apply grid gap-3 px-4 py-4 lg:items-center;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   @media (min-width: 1024px) {
@@ -705,6 +705,10 @@
     @apply min-w-0;
   }
 
+  .docs-row .docs-doc-link {
+    grid-column: 2 / -1;
+  }
+
   .docs-doc-link strong {
     @apply block truncate text-sm font-semibold;
     color: var(--text-strong);
@@ -730,6 +734,10 @@
   }
 
   @media (min-width: 1024px) {
+    .docs-row .docs-doc-link {
+      grid-column: auto;
+    }
+
     .docs-row .visibility-segment {
       grid-column: auto;
     }
@@ -765,8 +773,8 @@
   }
 
   .docs-row-actions {
-    @apply flex flex-wrap items-center gap-2 lg:justify-end;
-    grid-column: 2;
+    @apply flex flex-wrap items-center justify-end gap-2;
+    grid-column: 3;
   }
 
   @media (min-width: 1024px) {

@@ -77,6 +77,34 @@ func TestViewerShellHidesSignoutWhenSignedOut(t *testing.T) {
 	}
 }
 
+func TestViewerShellRendersMobileAccountSignoutWhenSignedIn(t *testing.T) {
+	user := &labbit.User{Status: labbit.UserStatusActive, Username: "alice"}
+	html := renderString(t, ViewerShell(templateDoc(), "overview", "dark", user, false))
+	for _, want := range []string{
+		`class="sidebar-account-mobile lg:hidden mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between"`,
+		`href="/@alice"`,
+		`href="/id/signout"`,
+		`order-first`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("signed-in viewer shell missing %q: %s", want, html)
+		}
+	}
+}
+
+func TestSignOutIconFacesLeft(t *testing.T) {
+	html := renderString(t, SignOutIcon())
+	for _, want := range []string{
+		`M15 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4`,
+		`M8 17l-5-5 5-5`,
+		`M3 12h12`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("signout icon missing left-facing path %q: %s", want, html)
+		}
+	}
+}
+
 func TestHomePageRendersSkillResourceBox(t *testing.T) {
 	html := renderString(t, HomePage(nil, nil, "", "dark", "", nil, false))
 	for _, want := range []string{
